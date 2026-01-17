@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read and write their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Users can read and write their own playlists
+    match /playlists/{playlistId} {
+      allow read, write: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.userId;
+    }
+    
+    // Users can read and write their own favorites
+    match /favorites/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Users can read and write their own recently played
+    match /recentlyPlayed/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Public music data (read-only for all authenticated users)
+    match /music/{musicId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only admin can write music data
+    }
+    
+    // Public charts and trending data
+    match /charts/{chartId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only admin can write chart data
+    }
+  }
+}
