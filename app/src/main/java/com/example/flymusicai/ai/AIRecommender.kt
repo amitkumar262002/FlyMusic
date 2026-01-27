@@ -203,9 +203,25 @@ class AIRecommender {
             combined.contains("lofi") || combined.contains("ambient") ||
             combined.contains("peaceful") -> "chill"
             
-            // Punjabi / Bhangra
+            // Punjabi
             combined.contains("punjabi") || combined.contains("bhangra") ||
             combined.contains("dhol") || combined.contains("panjabi") -> "punjabi"
+            
+            // Hindi / Bollywood
+            combined.contains("hindi") || combined.contains("bollywood") ||
+            combined.contains("desh bhakti") || combined.contains("indian") -> "hindi"
+
+            // Bhojpuri
+            combined.contains("bhojpuri") || combined.contains("lolipop") ||
+            combined.contains("pawan singh") || combined.contains("khesari") -> "bhojpuri"
+
+            // Haryanvi
+            combined.contains("haryanvi") || combined.contains("sapna") ||
+            combined.contains("gulzaar") -> "haryanvi"
+
+            // South Indian
+            combined.contains("tamil") || combined.contains("telugu") ||
+            combined.contains("malayalam") || combined.contains("kannada") -> "south_indian"
             
             // Hip Hop / Rap
             combined.contains("rap") || combined.contains("hip hop") || 

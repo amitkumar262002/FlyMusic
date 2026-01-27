@@ -1,10 +1,5 @@
 package com.example.flymusicai.ui.screens
 
-import android.app.Activity
-import android.content.Intent
-import android.speech.RecognizerIntent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -34,9 +29,10 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.flymusicai.data.Music
 import com.example.flymusicai.data.SearchCategories
+import com.example.flymusicai.ui.components.VoiceSearchVisualizer
 import com.example.flymusicai.ui.theme.*
+import com.example.flymusicai.utils.CustomSpeechRecognizer
 import com.example.flymusicai.viewmodel.MusicViewModel
-import java.util.Locale
 
 @Composable
 fun SearchScreen(
@@ -56,255 +52,271 @@ fun SearchScreen(
 
     val context = LocalContext.current
 
-    // Voice Search Launcher
-    val voiceSearchLauncher =
-            rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.StartActivityForResult()
-            ) { result ->
-                if (result.resultCode == Activity.RESULT_OK) {
-                    val data = result.data
-                    val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                    if (!matches.isNullOrEmpty()) {
-                        searchQuery = matches[0]
-                        musicViewModel.searchMusic(searchQuery)
-                    }
-                }
-            }
+    // Custom Voice Search
+    val speechRecognizer = remember { CustomSpeechRecognizer(context) }
+    val isListening by speechRecognizer.isListening.collectAsState()
+    val recognizedText by speechRecognizer.recognizedText.collectAsState()
+    val soundLevel by speechRecognizer.soundLevel.collectAsState()
+    val partialResults by speechRecognizer.partialResults.collectAsState()
+    val error by speechRecognizer.error.collectAsState()
 
-    // Function to start voice listening
-    fun startVoiceSearch() {
-        val intent =
-                Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(
-                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                    )
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search...")
-                }
-        try {
-            voiceSearchLauncher.launch(intent)
-        } catch (e: Exception) {
-            // In a real app, show a Toast or Snackbar
+    // Voice search visibility
+    var showVoiceSearch by remember { mutableStateOf(false) }
+
+    // Handle recognized text
+    LaunchedEffect(recognizedText) {
+        if (recognizedText.isNotEmpty()) {
+            searchQuery = recognizedText
+            musicViewModel.searchMusic(recognizedText)
+            // Close voice search after a short delay
+            kotlinx.coroutines.delay(500)
+            showVoiceSearch = false
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(DeepNavy).statusBarsPadding()) {
-        // Search Header
-        Column(modifier = Modifier.fillMaxWidth().background(DeepNavy)) {
-            Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onNavigateToHome) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-
-                if (searchQuery.isEmpty()) {
-                    Text(
-                            text = "Mood and Genres",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-            }
-
-            // Search Input Field
-            TextField(
-                    value = searchQuery,
-                    onValueChange = {
-                        searchQuery = it
-                        if (it.isNotBlank()) {
-                            musicViewModel.searchMusic(it)
-                        } else {
-                            musicViewModel.clearSearchSuggestions()
-                        }
-                    },
-                    placeholder = { Text("Search songs, artists...", color = TextSecondary) },
-                    modifier =
-                            Modifier.fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .height(56.dp)
-                                    .clip(RoundedCornerShape(28.dp))
-                                    .background(NavyLight),
-                    colors =
-                            TextFieldDefaults.colors(
-                                    focusedContainerColor = NavyLight,
-                                    unfocusedContainerColor = NavyLight,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    cursorColor = AmberGold,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent,
-                                    disabledIndicatorColor = Color.Transparent
-                            ),
-                    leadingIcon = {
-                        Icon(
-                                Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = TextSecondary
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(
-                                    onClick = {
-                                        searchQuery = ""
-                                        musicViewModel.clearSearchSuggestions()
-                                    }
-                            ) {
-                                Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Clear",
-                                        tint = TextSecondary
-                                )
-                            }
-                        } else {
-                            IconButton(onClick = { startVoiceSearch() }) {
-                                Icon(
-                                        Icons.Default.Mic,
-                                        contentDescription = "Voice Search",
-                                        tint = AmberGold
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions =
-                            KeyboardActions(
-                                    onSearch = {
-                                        if (searchQuery.isNotBlank())
-                                                musicViewModel.searchMusic(searchQuery)
-                                    }
-                            )
-            )
+    // Cleanup
+    DisposableEffect(Unit) {
+        onDispose {
+            speechRecognizer.destroy()
         }
+    }
 
-        // Content
-        LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (searchQuery.isBlank()) {
-                // Recent Searches
-                if (searchSuggestions.isNotEmpty()) {
-                    item {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().background(DeepNavy).statusBarsPadding()) {
+            // Search Header
+            Column(modifier = Modifier.fillMaxWidth().background(DeepNavy)) {
+                Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onNavigateToHome) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+
+                    if (searchQuery.isEmpty()) {
                         Text(
-                                "Recent Searches",
-                                color = AmberGold,
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(bottom = 8.dp)
+                                text = "Mood and Genres",
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 8.dp)
                         )
                     }
-                    items(searchSuggestions) { suggestion ->
-                        Row(
-                                modifier =
-                                        Modifier.fillMaxWidth()
-                                                .clickable {
-                                                    searchQuery = suggestion
-                                                    musicViewModel.searchMusic(suggestion)
-                                                }
-                                                .padding(vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                        ) {
+                }
+
+                // Search Input Field
+                TextField(
+                        value = searchQuery,
+                        onValueChange = {
+                            searchQuery = it
+                            if (it.isNotBlank()) {
+                                musicViewModel.searchMusic(it)
+                            } else {
+                                musicViewModel.clearSearchSuggestions()
+                            }
+                        },
+                        placeholder = { Text("Search songs, artists...", color = TextSecondary) },
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                        .height(56.dp)
+                                        .clip(RoundedCornerShape(28.dp))
+                                        .background(NavyLight),
+                        colors =
+                                TextFieldDefaults.colors(
+                                        focusedContainerColor = NavyLight,
+                                        unfocusedContainerColor = NavyLight,
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        cursorColor = AmberGold,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        disabledIndicatorColor = Color.Transparent
+                                ),
+                        leadingIcon = {
                             Icon(
                                     Icons.Default.Search,
-                                    contentDescription = null,
-                                    tint = TextSecondary,
-                                    modifier = Modifier.size(20.dp)
+                                    contentDescription = "Search",
+                                    tint = TextSecondary
                             )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(suggestion, color = Color.White, fontSize = 16.sp)
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(
+                                        onClick = {
+                                            searchQuery = ""
+                                            musicViewModel.clearSearchSuggestions()
+                                        }
+                                ) {
+                                    Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Clear",
+                                            tint = TextSecondary
+                                    )
+                                }
+                            } else {
+                                IconButton(onClick = { 
+                                    showVoiceSearch = true
+                                    speechRecognizer.startListening()
+                                }) {
+                                    Icon(
+                                            Icons.Default.Mic,
+                                            contentDescription = "Voice Search",
+                                            tint = AmberGold
+                                    )
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions =
+                                KeyboardActions(
+                                        onSearch = {
+                                            if (searchQuery.isNotBlank())
+                                                    musicViewModel.searchMusic(searchQuery)
+                                        }
+                                )
+                )
+            }
+
+            // Content
+            LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (searchQuery.isBlank()) {
+                    // Recent Searches
+                    if (searchSuggestions.isNotEmpty()) {
+                        item {
+                            Text(
+                                    "Recent Searches",
+                                    color = AmberGold,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                            )
                         }
-                        Divider(color = NavyLight)
+                        items(searchSuggestions) { suggestion ->
+                            Row(
+                                    modifier =
+                                            Modifier.fillMaxWidth()
+                                                    .clickable {
+                                                        searchQuery = suggestion
+                                                        musicViewModel.searchMusic(suggestion)
+                                                    }
+                                                    .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = null,
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text(suggestion, color = Color.White, fontSize = 16.sp)
+                            }
+                            Divider(color = NavyLight)
+                        }
                     }
-                }
 
-                // Moods & moments Section
-                item {
-                    Text(
-                            text = "Moods & moments",
-                            color = AmberGold,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(vertical = 16.dp)
-                    )
-                }
-
-                item {
-                    CategoryGrid(
-                            items = SearchCategories.moods,
-                            onItemClick = { mood ->
-                                searchQuery = mood
-                                musicViewModel.searchMusic(mood)
-                            }
-                    )
-                }
-
-                // Genres Section
-                item {
-                    Text(
-                            text = "Genres",
-                            color = AmberGold,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(vertical = 16.dp)
-                    )
-                }
-
-                item {
-                    CategoryGrid(
-                            items = SearchCategories.genres,
-                            onItemClick = { genre ->
-                                searchQuery = genre
-                                musicViewModel.searchMusic(genre)
-                            }
-                    )
-                }
-            } else {
-                // Search Results
-                if (searchResults.isEmpty()) {
+                    // Moods & moments Section
                     item {
-                        Box(
-                                modifier = Modifier.fillMaxWidth().padding(top = 50.dp),
-                                contentAlignment = Alignment.Center
-                        ) { Text("No results found for '$searchQuery'", color = TextSecondary) }
+                        Text(
+                                text = "Moods & moments",
+                                color = AmberGold,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 16.dp)
+                        )
+                    }
+
+                    item {
+                        CategoryGrid(
+                                items = SearchCategories.moods,
+                                onItemClick = { mood ->
+                                    searchQuery = mood
+                                    musicViewModel.searchMusic(mood)
+                                }
+                        )
+                    }
+
+                    // Genres Section
+                    item {
+                        Text(
+                                text = "Genres",
+                                color = AmberGold,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 16.dp)
+                        )
+                    }
+
+                    item {
+                        CategoryGrid(
+                                items = SearchCategories.genres,
+                                onItemClick = { genre ->
+                                    searchQuery = genre
+                                    musicViewModel.searchMusic(genre)
+                                }
+                        )
                     }
                 } else {
-                    items(searchResults) { song ->
-                        SearchResultItem(
-                            song = song, 
-                            onClick = { onSongClick(song.id) },
-                            onMoreClick = {
-                                selectedSongForOptions = song
-                                showSongOptions = true
-                            }
-                        )
+                    // Search Results
+                    if (searchResults.isEmpty()) {
+                        item {
+                            Box(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 50.dp),
+                                    contentAlignment = Alignment.Center
+                            ) { Text("No results found for '$searchQuery'", color = TextSecondary) }
+                        }
+                    } else {
+                        items(searchResults) { song ->
+                            SearchResultItem(
+                                song = song, 
+                                onClick = { onSongClick(song.id) },
+                                onMoreClick = {
+                                    selectedSongForOptions = song
+                                    showSongOptions = true
+                                }
+                            )
+                        }
                     }
                 }
             }
+
+            // Options Bottom Sheet
+            if (showSongOptions && selectedSongForOptions != null) {
+                val song = selectedSongForOptions!!
+                com.example.flymusicai.ui.components.SongOptionsBottomSheet(
+                    song = song,
+                    onDismiss = { showSongOptions = false },
+                    onPlayNext = { musicViewModel.playNext(it) },
+                    onAddToQueue = { musicViewModel.addToQueue(it) },
+                    onAddToPlaylist = { /* show playlist picker */ },
+                    onDownload = { /* musicViewModel.downloadSong(it) */ },
+                    onViewArtist = { /* Navigate to artist */ },
+                    onShare = { musicViewModel.shareSong(context, it) },
+                    onStartRadio = { musicViewModel.startRadio(it) },
+                    onAddToLibrary = { musicViewModel.toggleFavorite(it) },
+                    isFavorite = favoriteSongs.any { it.id == song.id },
+                    onToggleFavorite = { musicViewModel.toggleFavorite(it) }
+                )
+            }
         }
 
-        // Options Bottom Sheet
-        if (showSongOptions && selectedSongForOptions != null) {
-            val song = selectedSongForOptions!!
-            com.example.flymusicai.ui.components.SongOptionsBottomSheet(
-                song = song,
-                onDismiss = { showSongOptions = false },
-                onPlayNext = { musicViewModel.playNext(it) },
-                onAddToQueue = { musicViewModel.addToQueue(it) },
-                onAddToPlaylist = { /* show playlist picker */ },
-                onDownload = { /* musicViewModel.downloadSong(it) */ },
-                onViewArtist = { /* Navigate to artist */ },
-                onShare = { musicViewModel.shareSong(context, it) },
-                onStartRadio = { musicViewModel.startRadio(it) },
-                onAddToLibrary = { musicViewModel.toggleFavorite(it) },
-                isFavorite = favoriteSongs.any { it.id == song.id },
-                onToggleFavorite = { musicViewModel.toggleFavorite(it) }
+        // Custom Voice Search Overlay
+        if (showVoiceSearch) {
+            VoiceSearchVisualizer(
+                isListening = isListening,
+                soundLevel = soundLevel,
+                partialText = partialResults,
+                recognizedText = recognizedText,
+                error = error,
+                onClose = {
+                    showVoiceSearch = false
+                    speechRecognizer.cancel()
+                }
             )
         }
     }

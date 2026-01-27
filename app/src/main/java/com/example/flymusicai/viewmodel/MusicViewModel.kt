@@ -1,10 +1,14 @@
 package com.example.flymusicai.viewmodel
 
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
@@ -45,6 +49,19 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val youtubeService = com.example.flymusicai.api.YouTubeMusicService()
     private val preferencesManager = com.example.flymusicai.datastore.PreferencesManager(application.applicationContext)
     private val geminiService = com.example.flymusicai.api.GeminiAIService()
+    
+    // Media notification receiver
+    private val mediaActionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.getStringExtra("action")) {
+                "PLAY" -> play()
+                "PAUSE" -> pause()
+                "NEXT" -> playNext()
+                "PREVIOUS" -> playPrevious()
+                "STOP" -> stop()
+            }
+        }
+    }
 
     // Music data
     private val _allMusic = MutableStateFlow<List<Music>>(emptyList())
@@ -170,7 +187,16 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         checkNetworkStatus()
         observeAudioSettings()
         startVisualizer()
+        ensureForYouContent()
         
+        // Register media action receiver
+        val filter = IntentFilter("com.example.flymusicai.MEDIA_ACTION")
+        ContextCompat.registerReceiver(
+            application.applicationContext,
+            mediaActionReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         // Periodic check to ensure For You is never empty
         viewModelScope.launch {
             while (true) {
@@ -590,6 +616,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 _isPlaying.value = true
                 Log.d("MusicViewModel", "✅ Playback started successfully!")
                 
+                // Update notification service
+                updateNotificationService(song, true)
+                
                 // Update suggestions for the player
                 updatePlayerSuggestions(song)
                 
@@ -601,11 +630,30 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 
                 // PREFETCH next 2 songs for instant switching
                 prefetchNextSongs(song, queue)
+                
+                // Auto-play next song when current finishes
+                audioPlayer.setOnSongCompleteListener {
+                    playNext()
+                }
             } catch (e: Exception) {
-                Log.e("MusicViewModel", "❌ Error starting playback: ${e.message}", e)
-                e.printStackTrace()
+                Log.e("MusicViewModel", "❌ Playback error: ${e.message}", e)
                 _isPlaying.value = false
             }
+        }
+    }
+    
+    /** Update notification service with current song */
+    private fun updateNotificationService(song: Music, isPlaying: Boolean) {
+        try {
+            val intent = Intent(getApplication(), com.example.flymusicai.service.MusicPlayerService::class.java)
+            intent.putExtra("song_title", song.title)
+            intent.putExtra("song_artist", song.artist)
+            intent.putExtra("song_genre", song.genre)
+            intent.putExtra("song_cover", song.coverImageUrl)
+            intent.putExtra("is_playing", isPlaying)
+            ContextCompat.startForegroundService(getApplication(), intent)
+        } catch (e: Exception) {
+            Log.e("MusicViewModel", "Failed to update notification service", e)
         }
     }
 
@@ -718,7 +766,28 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             delay(100)
             _isPlaying.value = audioPlayer.isPlaying.value
+            _currentSong.value?.let { updateNotificationService(it, _isPlaying.value) }
         }
+    }
+    
+    /** Play (for broadcast receiver) */
+    fun play() {
+        audioPlayer.play()
+        _isPlaying.value = true
+        _currentSong.value?.let { updateNotificationService(it, true) }
+    }
+    
+    /** Pause (for broadcast receiver) */
+    fun pause() {
+        audioPlayer.pause()
+        _isPlaying.value = false
+        _currentSong.value?.let { updateNotificationService(it, false) }
+    }
+    
+    /** Stop (for broadcast receiver) */
+    fun stop() {
+        audioPlayer.stop()
+        _isPlaying.value = false
     }
 
     /** Play next song in queue with smart auto-play */
@@ -771,6 +840,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             delay(100)
             _isPlaying.value = audioPlayer.isPlaying.value
             
+            // Update notification
+            updateNotificationService(nextSong, _isPlaying.value)
+            
             // Update suggestions for continuous playback
             updatePlayerSuggestions(nextSong)
         }
@@ -799,6 +871,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             delay(100)
             _isPlaying.value = audioPlayer.isPlaying.value
+            
+            // Update notification
+            updateNotificationService(prevSong, _isPlaying.value)
         }
     }
 
