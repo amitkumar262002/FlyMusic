@@ -34,9 +34,16 @@ class AuthViewModel : ViewModel() {
                         "demo123",
                         UserProfile(
                                 userId = "1",
-                                username = "Demo User",
+                                username = "flymusicai_332_liha48",
                                 email = "demo@flymusicai.com",
-                                favoriteGenres = listOf("Pop", "Electronic")
+                                firstName = "Demo",
+                                lastName = "User",
+                                phoneNumber = "+91 XXXXXXXX10",
+                                status = "Always listening to FlyMusic AI!",
+                                dob = "01/01/2000",
+                                gender = "Male",
+                                isPremium = true,
+                                profileImageUrl = "https://i.pravatar.cc/300?img=11"
                         )
                 )
     }
@@ -141,11 +148,8 @@ class AuthViewModel : ViewModel() {
                             userId = (demoUsers.size + 1).toString(),
                             username = username,
                             email = email,
-                            fullName = fullName,
-                            address = address,
-                            country = country,
-                            state = state,
-                            pincode = pincode
+                            firstName = username,
+                            status = "Music Enthusiast"
                     )
 
             demoUsers[email] = Pair(password, newUser)
@@ -162,6 +166,45 @@ class AuthViewModel : ViewModel() {
         _currentUser.value = null
         _isAuthenticated.value = false
         _authError.value = null
+    }
+
+    /** Update user profile */
+    fun updateProfile(
+            username: String,
+            firstName: String,
+            lastName: String,
+            status: String,
+            phoneNumber: String,
+            email: String,
+            dob: String,
+            gender: String,
+            profileImageUrl: String? = null
+    ) {
+        val current = _currentUser.value ?: return
+        _currentUser.value =
+                current.copy(
+                        username = username,
+                        firstName = firstName,
+                        lastName = lastName,
+                        status = status,
+                        phoneNumber = phoneNumber,
+                        email = email,
+                        dob = dob,
+                        gender = gender,
+                        profileImageUrl = profileImageUrl ?: current.profileImageUrl
+                )
+
+        // Update in demo map as well to persist across mock sessions
+        val entry = demoUsers[current.email]
+        if (entry != null) {
+            demoUsers[current.email] = entry.copy(second = _currentUser.value!!)
+        }
+    }
+
+    /** Connect to Facebook */
+    fun connectFacebook() {
+        val current = _currentUser.value ?: return
+        _currentUser.value = current.copy(isFacebookConnected = true)
     }
 
     /** Clear error message */

@@ -2,7 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    kotlin("plugin.serialization") version "1.9.22"
+    kotlin("plugin.serialization") version "2.0.21"
 }
 
 android {
@@ -49,6 +49,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation("androidx.compose.foundation:foundation")
     
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
@@ -71,11 +72,14 @@ dependencies {
     
     // ExoPlayer for audio playback
     implementation("androidx.media3:media3-exoplayer:1.2.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.2.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.2.1")
     implementation("androidx.media3:media3-ui:1.2.1")
     implementation("androidx.media3:media3-session:1.2.1")
     
     // Ktor HTTP Client for music streaming APIs
     implementation("io.ktor:ktor-client-android:2.3.7")
+    implementation("io.ktor:ktor-client-okhttp:2.3.7")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.7")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
     implementation("io.ktor:ktor-client-logging:2.3.7")
@@ -88,4 +92,10 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    
+    // NewPipe Extractor
+    implementation(libs.newpipe.extractor)
+    implementation(libs.nanojson)
+    implementation(libs.jsoup)
+    implementation(libs.okhttp)
 }

@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -34,12 +35,31 @@ class PreferencesManager(private val context: Context) {
         private val SLEEP_TIMER_KEY = intPreferencesKey("sleep_timer")
         private val LYRICS_ENABLED_KEY = booleanPreferencesKey("lyrics_enabled")
         private val OFFLINE_MODE_KEY = booleanPreferencesKey("offline_mode")
+        private val EXPLICIT_CONTENT_KEY =
+                booleanPreferencesKey(
+                        "explicit_content_enabled"
+                ) // Default: True (which means disabled IS false)
+        private val ANNOTATIONS_KEY = booleanPreferencesKey("annotations_enabled")
+        private val SHOW_ADS_KEY = booleanPreferencesKey("show_ads")
+        private val VIDEO_PLAYBACK_KEY = booleanPreferencesKey("video_playback")
+        private val MOBILE_NOTIFICATIONS_KEY = booleanPreferencesKey("mobile_notifications")
+        private val EMAIL_NOTIFICATIONS_KEY = booleanPreferencesKey("email_notifications")
+        private val MUSIC_LANGUAGES_KEY = stringPreferencesKey("music_languages")
+        private val DISPLAY_LANGUAGE_KEY = stringPreferencesKey("display_language")
+        private val APP_THEME_KEY = stringPreferencesKey("app_theme")
 
         // 🎛️ Equalizer Settings Keys
         private val EQUALIZER_ENABLED_KEY = booleanPreferencesKey("equalizer_enabled")
         private val BASS_BOOST_KEY = intPreferencesKey("bass_boost")
         private val VIRTUALIZER_KEY = intPreferencesKey("virtualizer")
         private val REVERB_KEY = stringPreferencesKey("reverb")
+        private val BAND_60HZ_KEY = floatPreferencesKey("band_60hz")
+        private val BAND_230HZ_KEY = floatPreferencesKey("band_230hz")
+        private val BAND_910HZ_KEY = floatPreferencesKey("band_910hz")
+        private val BAND_3600HZ_KEY = floatPreferencesKey("band_3600hz")
+        private val BAND_14000HZ_KEY = floatPreferencesKey("band_14000hz")
+        private val LOUDNESS_KEY = intPreferencesKey("loudness_boost")
+        private val RECENTLY_PLAYED_KEY = stringPreferencesKey("recently_played_json")
     }
 
     // ========== Existing Preferences ==========
@@ -101,6 +121,43 @@ class PreferencesManager(private val context: Context) {
     val offlineModeFlow: Flow<Boolean> =
             context.dataStore.data.map { preferences -> preferences[OFFLINE_MODE_KEY] ?: false }
 
+    val explicitContentEnabledFlow: Flow<Boolean> =
+            context.dataStore.data.map { preferences -> preferences[EXPLICIT_CONTENT_KEY] ?: true }
+
+    val annotationsEnabledFlow: Flow<Boolean> =
+            context.dataStore.data.map { preferences -> preferences[ANNOTATIONS_KEY] ?: true }
+
+    val showAdsFlow: Flow<Boolean> =
+            context.dataStore.data.map { preferences -> preferences[SHOW_ADS_KEY] ?: true }
+
+    val videoPlaybackEnabledFlow: Flow<Boolean> =
+            context.dataStore.data.map { preferences -> preferences[VIDEO_PLAYBACK_KEY] ?: true }
+
+    val mobileNotificationsFlow: Flow<Boolean> =
+            context.dataStore.data.map { preferences ->
+                preferences[MOBILE_NOTIFICATIONS_KEY] ?: true
+            }
+
+    val emailNotificationsFlow: Flow<Boolean> =
+            context.dataStore.data.map { preferences ->
+                preferences[EMAIL_NOTIFICATIONS_KEY] ?: false
+            }
+
+    val musicLanguagesFlow: Flow<String> =
+            context.dataStore.data.map { preferences ->
+                preferences[MUSIC_LANGUAGES_KEY] ?: "Hindi, English"
+            }
+
+    val displayLanguageFlow: Flow<String> =
+            context.dataStore.data.map { preferences ->
+                preferences[DISPLAY_LANGUAGE_KEY] ?: "English"
+            }
+
+    val appThemeFlow: Flow<String> =
+            context.dataStore.data.map { preferences ->
+                preferences[APP_THEME_KEY] ?: "System Default"
+            }
+
     // 🎛️ Equalizer Flows
     val equalizerEnabledFlow: Flow<Boolean> =
             context.dataStore.data.map { preferences ->
@@ -115,6 +172,23 @@ class PreferencesManager(private val context: Context) {
 
     val reverbFlow: Flow<String> =
             context.dataStore.data.map { preferences -> preferences[REVERB_KEY] ?: "None" }
+
+    val band60HzFlow: Flow<Float> =
+            context.dataStore.data.map { preferences -> preferences[BAND_60HZ_KEY] ?: 0f }
+    val band230HzFlow: Flow<Float> =
+            context.dataStore.data.map { preferences -> preferences[BAND_230HZ_KEY] ?: 0f }
+    val band910HzFlow: Flow<Float> =
+            context.dataStore.data.map { preferences -> preferences[BAND_910HZ_KEY] ?: 0f }
+    val band3600HzFlow: Flow<Float> =
+            context.dataStore.data.map { preferences -> preferences[BAND_3600HZ_KEY] ?: 0f }
+    val band14000HzFlow: Flow<Float> =
+            context.dataStore.data.map { preferences -> preferences[BAND_14000HZ_KEY] ?: 0f }
+
+    val loudnessFlow: Flow<Int> =
+            context.dataStore.data.map { preferences -> preferences[LOUDNESS_KEY] ?: 0 }
+
+    val recentlyPlayedFlow: Flow<String> =
+            context.dataStore.data.map { preferences -> preferences[RECENTLY_PLAYED_KEY] ?: "[]" }
 
     // ========== Setters ==========
 
@@ -170,6 +244,42 @@ class PreferencesManager(private val context: Context) {
         context.dataStore.edit { preferences -> preferences[OFFLINE_MODE_KEY] = enabled }
     }
 
+    suspend fun setExplicitContentEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[EXPLICIT_CONTENT_KEY] = enabled }
+    }
+
+    suspend fun setAnnotationsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[ANNOTATIONS_KEY] = enabled }
+    }
+
+    suspend fun setShowAds(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[SHOW_ADS_KEY] = enabled }
+    }
+
+    suspend fun setVideoPlaybackEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[VIDEO_PLAYBACK_KEY] = enabled }
+    }
+
+    suspend fun setMobileNotifications(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[MOBILE_NOTIFICATIONS_KEY] = enabled }
+    }
+
+    suspend fun setEmailNotifications(enabled: Boolean) {
+        context.dataStore.edit { preferences -> preferences[EMAIL_NOTIFICATIONS_KEY] = enabled }
+    }
+
+    suspend fun setMusicLanguages(languages: String) {
+        context.dataStore.edit { preferences -> preferences[MUSIC_LANGUAGES_KEY] = languages }
+    }
+
+    suspend fun setDisplayLanguage(language: String) {
+        context.dataStore.edit { preferences -> preferences[DISPLAY_LANGUAGE_KEY] = language }
+    }
+
+    suspend fun setAppTheme(theme: String) {
+        context.dataStore.edit { preferences -> preferences[APP_THEME_KEY] = theme }
+    }
+
     // 🎛️ Equalizer Setters
     suspend fun setEqualizerEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences -> preferences[EQUALIZER_ENABLED_KEY] = enabled }
@@ -185,5 +295,25 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setReverb(preset: String) {
         context.dataStore.edit { preferences -> preferences[REVERB_KEY] = preset }
+    }
+
+    suspend fun setLoudness(level: Int) {
+        context.dataStore.edit { preferences -> preferences[LOUDNESS_KEY] = level }
+    }
+
+    suspend fun setRecentlyPlayed(json: String) {
+        context.dataStore.edit { preferences -> preferences[RECENTLY_PLAYED_KEY] = json }
+    }
+
+    suspend fun setEqualizerBands(bands: List<Float>) {
+        context.dataStore.edit { preferences ->
+            if (bands.size >= 5) {
+                preferences[BAND_60HZ_KEY] = bands[0]
+                preferences[BAND_230HZ_KEY] = bands[1]
+                preferences[BAND_910HZ_KEY] = bands[2]
+                preferences[BAND_3600HZ_KEY] = bands[3]
+                preferences[BAND_14000HZ_KEY] = bands[4]
+            }
+        }
     }
 }

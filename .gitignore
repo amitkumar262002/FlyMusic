@@ -13,3 +13,13 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Logs and temporary files
+*.log
+build_log_*.txt
+build_output*.txt
+build_errors*.txt
+build_log.txt
+better-lyrics-master/
+task.md
+index.html

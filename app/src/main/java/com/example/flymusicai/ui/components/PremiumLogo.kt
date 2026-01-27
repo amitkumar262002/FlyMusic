@@ -25,8 +25,8 @@ import com.example.flymusicai.R
 import com.example.flymusicai.ui.theme.*
 
 /**
- * 🎯 Premium Animated Logo Component Features:
- * - 360° continuous rotation
+ *  Premium Animated Logo Component Features:
+ * - 360 continuous rotation
  * - Hover scale effect
  * - Gold glow animation
  * - Tap to navigate home
@@ -35,135 +35,103 @@ import com.example.flymusicai.ui.theme.*
 fun PremiumAnimatedLogo(
         onClick: () -> Unit,
         modifier: Modifier = Modifier,
-        size: Dp = 56.dp,
-        enableRotation: Boolean = true,
+        size: Dp = 56.dp, // This will now serve as height
+        enableRotation: Boolean = false, // Disabled rotation by default for winged logo
         enableGlow: Boolean = true
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
+        val interactionSource = remember { MutableInteractionSource() }
+        val isHovered by interactionSource.collectIsHoveredAsState()
 
-    // 360° Infinite Rotation Animation
-    val infiniteTransition = rememberInfiniteTransition(label = "logo_rotation")
-    val rotation by
-            infiniteTransition.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 360f,
-                    animationSpec =
-                            infiniteRepeatable(
-                                    animation = tween(durationMillis = 8000, easing = LinearEasing),
-                                    repeatMode = RepeatMode.Restart
-                            ),
-                    label = "rotation"
-            )
-
-    // Hover Scale Animation
-    val scale by
-            animateFloatAsState(
-                    targetValue = if (isHovered) 1.15f else 1f,
-                    animationSpec =
-                            spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessLow
-                            ),
-                    label = "scale"
-            )
-
-    // Glow Pulse Animation
-    val glowAlpha by
-            infiniteTransition.animateFloat(
-                    initialValue = 0.3f,
-                    targetValue = 0.7f,
-                    animationSpec =
-                            infiniteRepeatable(
-                                    animation = tween(2000, easing = EaseInOutSine),
-                                    repeatMode = RepeatMode.Reverse
-                            ),
-                    label = "glow"
-            )
-
-    Box(
-            modifier =
-                    modifier.size(size)
-                            .scale(scale)
-                            .clickable(
-                                    interactionSource = interactionSource,
-                                    indication = null,
-                                    onClick = onClick
-                            ),
-            contentAlignment = Alignment.Center
-    ) {
-        // Outer Glow Effect
-        if (enableGlow) {
-            Box(
-                    modifier =
-                            Modifier.size(size * 1.3f)
-                                    .background(
-                                            brush =
-                                                    Brush.radialGradient(
-                                                            colors =
-                                                                    listOf(
-                                                                            AmberGold.copy(
-                                                                                    alpha =
-                                                                                            glowAlpha *
-                                                                                                    0.5f
-                                                                            ),
-                                                                            Color.Transparent
-                                                                    )
-                                                    ),
-                                            shape = CircleShape
-                                    )
-            )
-        }
-
-        // Logo Container with Navy Background
-        Surface(
-                modifier =
-                        Modifier.size(size)
-                                .shadow(
-                                        elevation = if (isHovered) 12.dp else 6.dp,
-                                        shape = CircleShape,
-                                        ambientColor = AmberGold,
-                                        spotColor = AmberGold
+        // Hover Scale Animation
+        val scale by
+                animateFloatAsState(
+                        targetValue = if (isHovered) 1.1f else 1f,
+                        animationSpec =
+                                spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessLow
                                 ),
-                shape = CircleShape,
-                color = NavySurface
+                        label = "scale"
+                )
+
+        // Glow Pulse Animation
+        val infiniteTransition = rememberInfiniteTransition(label = "glow_animation")
+        val glowAlpha by
+                infiniteTransition.animateFloat(
+                        initialValue = 0.3f,
+                        targetValue = 0.6f,
+                        animationSpec =
+                                infiniteRepeatable(
+                                        animation = tween(2000, easing = EaseInOutSine),
+                                        repeatMode = RepeatMode.Reverse
+                                ),
+                        label = "glow"
+                )
+
+        // Calculate width based on approximate aspect ratio for wings (e.g., 1.5x)
+        val width = size * 1.5f
+
+        Box(
+                modifier =
+                        modifier
+                                .height(size)
+                                .width(width)
+                                .scale(scale)
+                                .clickable(
+                                        interactionSource = interactionSource,
+                                        indication = null,
+                                        onClick = onClick
+                                ),
+                contentAlignment = Alignment.Center
         ) {
-            Box(
-                    modifier = Modifier.fillMaxSize().padding(12.dp),
-                    contentAlignment = Alignment.Center
-            ) {
+                // Outer Glow Effect (Subtle backlight)
+                if (enableGlow) {
+                        Box(
+                                modifier =
+                                        Modifier.size(width * 1.2f) // Make glow background large enough
+                                                .background(
+                                                        brush =
+                                                                Brush.radialGradient(
+                                                                        colors =
+                                                                                listOf(
+                                                                                        AmberGold.copy(alpha = glowAlpha * 0.4f),
+                                                                                        Color.Transparent
+                                                                                )
+                                                                )
+                                                )
+                        )
+                }
+
+                // Logo Image
                 Image(
                         painter = painterResource(id = R.drawable.fly_music_logo),
                         contentDescription = "Fly Music AI Logo",
-                        modifier =
-                                Modifier.fillMaxSize().rotate(if (enableRotation) rotation else 0f),
+                        modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
                 )
-            }
         }
-    }
 }
 
-/** 🎨 Compact Premium Logo (for headers) */
+/**  Compact Premium Logo (for headers) */
 @Composable
 fun CompactPremiumLogo(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    PremiumAnimatedLogo(
-            onClick = onClick,
-            modifier = modifier,
-            size = 48.dp,
-            enableRotation = true,
-            enableGlow = true
-    )
+        PremiumAnimatedLogo(
+                onClick = onClick,
+                modifier = modifier,
+                size = 48.dp,
+                enableRotation = true,
+                enableGlow = true
+        )
 }
 
-/** 🌟 Large Premium Logo (for splash/login screens) */
+/**  Large Premium Logo (for splash/login screens) */
 @Composable
 fun LargePremiumLogo(onClick: () -> Unit = {}, modifier: Modifier = Modifier) {
-    PremiumAnimatedLogo(
-            onClick = onClick,
-            modifier = modifier,
-            size = 120.dp,
-            enableRotation = true,
-            enableGlow = true
-    )
+        PremiumAnimatedLogo(
+                onClick = onClick,
+                modifier = modifier,
+                size = 120.dp,
+                enableRotation = true,
+                enableGlow = true
+        )
 }

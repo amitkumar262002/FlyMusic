@@ -70,9 +70,9 @@ class AIRecommender {
             score += (music.playCount.toDouble() / maxPlayCount) * 20.0
             
             // Recency (10% weight)
-            if (music.releaseYear == 2024) {
+            if (music.year == 2024) {
                 score += 10.0
-            } else if (music.releaseYear == 2023) {
+            } else if (music.year == 2023) {
                 score += 5.0
             }
             
@@ -105,46 +105,125 @@ class AIRecommender {
             id = "ai_recommended",
             name = "Recommended for You",
             description = "AI-curated songs based on your taste",
-            coverImageUrl = "https://picsum.photos/seed/airecommended/400/400",
+            coverImageUrl = "https://images.unsplash.com/photo-1514525253361-b83f85f051c0?w=500&q=80",
             songs = recommendations,
             category = PlaylistCategory.RECOMMENDED
         )
     }
     
     /**
-     * Find similar songs based on a given song
+     * Find similar songs based on a given song with intelligent mood/category detection
      */
     fun findSimilarSongs(
         targetSong: Music,
         allMusic: List<Music>,
         limit: Int = 5
     ): List<Music> {
+        // Detect the mood/category of the target song
+        val targetCategory = detectMoodCategory(targetSong)
+        
         return allMusic
             .filter { it.id != targetSong.id }
             .map { music ->
                 var similarity = 0.0
                 
-                // Same genre (50% weight)
+                // Detected mood/category match (60% weight) - HIGHEST PRIORITY
+                val musicCategory = detectMoodCategory(music)
+                if (musicCategory == targetCategory && targetCategory != "general") {
+                    similarity += 60.0
+                }
+                
+                // Same genre (25% weight)
                 if (music.genre == targetSong.genre) {
-                    similarity += 50.0
+                    similarity += 25.0
                 }
                 
-                // Same artist (30% weight)
+                // Same artist (10% weight)
                 if (music.artist == targetSong.artist) {
-                    similarity += 30.0
+                    similarity += 10.0
                 }
                 
-                // Similar popularity (20% weight)
+                // Similar popularity (5% weight)
                 val playCountDiff = kotlin.math.abs(music.playCount - targetSong.playCount)
                 val maxPlayCount = allMusic.maxOfOrNull { it.playCount } ?: 1
                 val playCountSimilarity = 1.0 - (playCountDiff.toDouble() / maxPlayCount)
-                similarity += playCountSimilarity * 20.0
+                similarity += playCountSimilarity * 5.0
                 
                 music to similarity
             }
             .sortedByDescending { it.second }
             .take(limit)
             .map { it.first }
+    }
+    
+    /**
+     * Detect mood/category from song metadata
+     */
+    private fun detectMoodCategory(song: Music): String {
+        val title = song.title.lowercase()
+        val artist = song.artist.lowercase()
+        val genre = song.genre.lowercase()
+        val combined = "$title $artist $genre"
+        
+        return when {
+            // Workout / Gym / Fitness
+            combined.contains("workout") || combined.contains("gym") || 
+            combined.contains("fitness") || combined.contains("exercise") ||
+            combined.contains("motivation") || combined.contains("beast mode") ||
+            combined.contains("training") || combined.contains("power") -> "workout"
+            
+            // Party / Dance / Club
+            combined.contains("party") || combined.contains("dance") || 
+            combined.contains("club") || combined.contains("edm") ||
+            combined.contains("dj") || combined.contains("remix") ||
+            combined.contains("bass") || combined.contains("beat") -> "party"
+            
+            // Romance / Love
+            combined.contains("love") || combined.contains("romance") || 
+            combined.contains("heart") || combined.contains("romantic") ||
+            combined.contains("pyaar") || combined.contains("ishq") ||
+            combined.contains("mohabbat") || combined.contains("dil") -> "romance"
+            
+            // Sad / Emotional / Breakup
+            combined.contains("sad") || combined.contains("cry") || 
+            combined.contains("alone") || combined.contains("breakup") ||
+            combined.contains("heartbreak") || combined.contains("tears") ||
+            combined.contains("emotional") -> "sad"
+            
+            // Devotional / Spiritual / Religious
+            combined.contains("devotional") || combined.contains("bhajan") || 
+            combined.contains("hanuman") || combined.contains("shiv") ||
+            combined.contains("krishna") || combined.contains("ram") ||
+            combined.contains("prayer") || combined.contains("spiritual") ||
+            combined.contains("mantra") || combined.contains("aarti") -> "devotional"
+            
+            // Chill / Relax / Study
+            combined.contains(regex = Regex("\\bchill\\b")) || combined.contains("relax") || 
+            combined.contains("calm") || combined.contains("study") ||
+            combined.contains("lofi") || combined.contains("ambient") ||
+            combined.contains("peaceful") -> "chill"
+            
+            // Punjabi / Bhangra
+            combined.contains("punjabi") || combined.contains("bhangra") ||
+            combined.contains("dhol") || combined.contains("panjabi") -> "punjabi"
+            
+            // Hip Hop / Rap
+            combined.contains("rap") || combined.contains("hip hop") || 
+            combined.contains("hiphop") || combined.contains("swag") ||
+            combined.contains("desi hip hop") -> "hiphop"
+            
+            // Classical / Ghazal
+            combined.contains("classical") || combined.contains("ghazal") ||
+            combined.contains("raga") || combined.contains("sitar") ||
+            combined.contains("tabla") -> "classical"
+            
+            // 90s / Retro / Old
+            song.year in 1990..1999 || combined.contains("90s") || 
+            combined.contains("retro") || combined.contains("old is gold") ||
+            combined.contains("classic") -> "90s"
+            
+            else -> "general"
+        }
     }
     
     /**

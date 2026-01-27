@@ -1,4 +1,8 @@
 package com.example.flymusicai.ui.components
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import com.example.flymusicai.R
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.clickable
@@ -63,54 +67,15 @@ fun FlyMusicAILogo(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
     ) {
-        // Gradient circle background with music icon
-        Box(
-                modifier =
-                        Modifier.size(size.iconSize).scale(scale).drawBehind {
-                            // Gradient glow effect
-                            drawCircle(
-                                    brush =
-                                            Brush.radialGradient(
-                                                    colors =
-                                                            listOf(
-                                                                    GradientStart.copy(
-                                                                            alpha = 0.3f
-                                                                    ),
-                                                                    PrimaryCyan.copy(alpha = 0.3f),
-                                                                    Color.Transparent
-                                                            ),
-                                                    center =
-                                                            Offset(
-                                                                    this.size.width / 2,
-                                                                    this.size.height / 2
-                                                            ),
-                                                    radius = this.size.width / 1.5f
-                                            )
-                            )
-                        },
-                contentAlignment = Alignment.Center
-        ) {
-            // Gradient circle
-            Box(
-                    modifier =
-                            Modifier.fillMaxSize().drawBehind {
-                                drawCircle(
-                                        brush =
-                                                Brush.linearGradient(
-                                                        colors = listOf(GradientStart, PrimaryCyan)
-                                                )
-                                )
-                            },
-                    contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                        imageVector = Icons.Default.MusicNote,
-                        contentDescription = "Fly Music AI Logo",
-                        modifier = Modifier.size(size.iconSize * 0.6f).rotate(rotation),
-                        tint = TextPrimary
-                )
-            }
-        }
+        // New Logo Image
+        Image(
+            painter = painterResource(id = R.drawable.fly_music_logo),
+            contentDescription = "Fly Music AI Logo",
+            modifier = Modifier
+                .height(size.iconSize)
+                .width(size.iconSize * 1.5f), // Maintain aspect ratio
+            contentScale = ContentScale.Fit
+        )
 
         if (showText) {
             Spacer(modifier = Modifier.width(12.dp))
@@ -136,7 +101,7 @@ fun FlyMusicAILogo(
                                 )
                 )
                 Text(
-                        text = "AI",
+                        text = "FlyAI",
                         style =
                                 TextStyle(
                                         fontSize = size.fontSize * 0.7f,

@@ -1,5 +1,8 @@
 package com.example.flymusicai.ui.screens
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -13,7 +16,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -35,203 +40,407 @@ fun MainScreen(
         themeViewModel: com.example.flymusicai.viewmodel.ThemeViewModel,
         onLogout: () -> Unit
 ) {
-    val navController = rememberNavController()
-    val currentSong by musicViewModel.currentSong.collectAsState()
-    val isPlaying by musicViewModel.isPlaying.collectAsState()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+        val navController = rememberNavController()
+        val currentSong by musicViewModel.currentSong.collectAsState()
+        val isPlaying by musicViewModel.isPlaying.collectAsState()
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
 
-    // Hide mini player on MusicPlayer and Equalizer screens
-    val showMiniPlayer =
-            currentSong != null &&
-                    currentRoute != Screen.MusicPlayer.route &&
-                    currentRoute != Screen.Equalizer.route
+        // Sync Recently Played from DataStore on start
+        val recentlyPlayedJson by themeViewModel.recentlyPlayedJson.collectAsState()
+        val allMusic by musicViewModel.allMusic.collectAsState()
 
-    Scaffold(
-            topBar = {
-                // Mini player at TOP
-                AnimatedVisibility(
-                        visible = showMiniPlayer,
-                        enter = slideInVertically(initialOffsetY = { -it }),
-                        exit = slideOutVertically(targetOffsetY = { -it })
-                ) {
-                    currentSong?.let { song ->
-                        MiniPlayer(
-                                song = song,
-                                isPlaying = isPlaying,
-                                onPlayPauseClick = { musicViewModel.togglePlayPause() },
-                                onPreviousClick = { musicViewModel.playPrevious() },
-                                onNextClick = { musicViewModel.playNext() },
-                                onClick = {
-                                    navController.navigate(Screen.MusicPlayer.createRoute(song.id))
-                                }
-                        )
+        LaunchedEffect(recentlyPlayedJson, allMusic) {
+            if (allMusic.isNotEmpty()) {
+                try {
+                    val historyIds = Json.decodeFromString<List<String>>(recentlyPlayedJson)
+                    val historySongs = historyIds.mapNotNull { id -> 
+                        allMusic.find { it.id == id } 
                     }
+                    musicViewModel.setRecentlyPlayedList(historySongs)
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
-            },
-            bottomBar = {
-                // Bottom Navigation Bar only
-                BottomNavigationBar(navController = navController)
-            }
-    ) { paddingValues ->
-        NavHost(
-                navController = navController,
-                startDestination = Screen.Home.route,
-                modifier = Modifier.padding(paddingValues)
-        ) {
-            composable(Screen.Home.route) {
-                HomeScreen(
-                        musicViewModel = musicViewModel,
-                        onSearchClick = { navController.navigate(Screen.Search.route) },
-                        onSongClick = { songId ->
-                            val song = musicViewModel.allMusic.value.find { it.id == songId }
-                            song?.let { musicViewModel.playSong(it, musicViewModel.allMusic.value) }
-                        },
-                        onPlaylistClick = { playlistId ->
-                            val playlist =
-                                    musicViewModel.playlists.value.find { it.id == playlistId }
-                            playlist?.let { musicViewModel.playPlaylist(it) }
-                        }
-                )
-            }
-
-            composable(Screen.Search.route) {
-                SearchScreen(
-                        musicViewModel = musicViewModel,
-                        onSongClick = { songId ->
-                            val song = musicViewModel.allMusic.value.find { it.id == songId }
-                            song?.let { musicViewModel.playSong(it, musicViewModel.allMusic.value) }
-                        },
-                        onNavigateToHome = {
-                            navController.navigate(Screen.Home.route) {
-                                popUpTo(Screen.Home.route) { inclusive = true }
-                            }
-                        }
-                )
-            }
-
-            composable(Screen.Favorites.route) {
-                FavoritesScreen(
-                        musicViewModel = musicViewModel,
-                        onSongClick = { songId ->
-                            val song = musicViewModel.favoriteSongs.value.find { it.id == songId }
-                            song?.let {
-                                musicViewModel.playSong(it, musicViewModel.favoriteSongs.value)
-                            }
-                        },
-                        onNavigateToHome = {
-                            navController.navigate(Screen.Home.route) {
-                                popUpTo(Screen.Home.route) { inclusive = true }
-                            }
-                        }
-                )
-            }
-
-            composable(Screen.Settings.route) {
-                SettingsScreen(
-                        authViewModel = authViewModel,
-                        themeViewModel = themeViewModel,
-                        onLogout = onLogout,
-                        onNavigateToHome = {
-                            navController.navigate(Screen.Home.route) {
-                                popUpTo(Screen.Home.route) { inclusive = true }
-                            }
-                        },
-                        onNavigateToEqualizer = { navController.navigate(Screen.Equalizer.route) }
-                )
-            }
-
-            composable(Screen.Equalizer.route) {
-                EqualizerScreen(
-                        themeViewModel = themeViewModel,
-                        onBack = { navController.popBackStack() }
-                )
-            }
-
-            composable(Screen.MusicPlayer.route) {
-                MusicPlayerScreen(
-                        musicViewModel = musicViewModel,
-                        themeViewModel = themeViewModel,
-                        onBackPress = { navController.popBackStack() },
-                        onNavigateToEqualizer = { navController.navigate(Screen.Equalizer.route) }
-                )
             }
         }
-    }
+
+        // Save Recently Played to DataStore when it changes
+        val recentlyPlayed by musicViewModel.recentlyPlayed.collectAsState()
+        LaunchedEffect(recentlyPlayed) {
+            if (recentlyPlayed.isNotEmpty()) {
+                val ids = recentlyPlayed.map { it.id }
+                themeViewModel.setRecentlyPlayed(Json.encodeToString(ids))
+            }
+        }
+
+        // Hide mini player on MusicPlayer and Equalizer screens
+        val showMiniPlayer =
+                currentSong != null &&
+                        currentRoute != Screen.MusicPlayer.route &&
+                        currentRoute != Screen.Equalizer.route &&
+                        currentRoute != "for_you"
+
+        Scaffold(
+                bottomBar = {
+                        // Column with mini player above navigation bar
+                        Column {
+                                // Global Mini Player at BOTTOM (above navigation bar)
+                                AnimatedVisibility(
+                                        visible = showMiniPlayer,
+                                        enter = slideInVertically(initialOffsetY = { it }),
+                                        exit = slideOutVertically(targetOffsetY = { it })
+                                ) {
+                                        currentSong?.let { song ->
+                                                MiniPlayer(
+                                                        song = song,
+                                                        isPlaying = isPlaying,
+                                                        onPlayPauseClick = {
+                                                                musicViewModel.togglePlayPause()
+                                                        },
+                                                        onPreviousClick = {
+                                                                musicViewModel.playPrevious()
+                                                        },
+                                                        onNextClick = { musicViewModel.playNext() },
+                                                        onClick = {
+                                                                navController.navigate(
+                                                                        Screen.MusicPlayer
+                                                                                .createRoute(
+                                                                                        song.id
+                                                                                )
+                                                                )
+                                                        }
+                                                )
+                                        }
+                                }
+                                // Bottom Navigation Bar
+                                BottomNavigationBar(navController = navController)
+                        }
+                }
+        ) { paddingValues ->
+                NavHost(
+                        navController = navController,
+                        startDestination = Screen.Home.route,
+                        modifier = Modifier.padding(paddingValues)
+                ) {
+                        composable(Screen.Home.route) {
+                                HomeScreen(
+                                        musicViewModel = musicViewModel,
+                                        onSearchClick = {
+                                                navController.navigate(Screen.Search.route)
+                                        },
+                                        onSongClick = { songId ->
+                                                musicViewModel.playSongById(
+                                                        songId,
+                                                        musicViewModel.allMusic.value
+                                                )
+                                        },
+                                        onPlaylistClick = { playlistId ->
+                                                navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                                        },
+                                        onNavigateToSettings = {
+                                                navController.navigate(Screen.Settings.route)
+                                        }
+                                )
+                        }
+
+                        composable(Screen.Search.route) {
+                                SearchScreen(
+                                        musicViewModel = musicViewModel,
+                                        onSongClick = { songId ->
+                                                musicViewModel.playSongById(
+                                                        songId,
+                                                        musicViewModel.searchResults.value
+                                                )
+                                        },
+                                        onNavigateToHome = {
+                                                navController.navigate(Screen.Home.route) {
+                                                        popUpTo(Screen.Home.route) {
+                                                                inclusive = true
+                                                        }
+                                                }
+                                        }
+                                )
+                        }
+
+                        composable(Screen.Favorites.route) {
+                                FavoritesScreen(
+                                        musicViewModel = musicViewModel,
+                                        onSongClick = { songId ->
+                                                musicViewModel.playSongById(
+                                                        songId,
+                                                        musicViewModel.favoriteSongs.value
+                                                )
+                                        },
+                                        onNavigateToHome = {
+                                                navController.navigate(Screen.Home.route) {
+                                                        popUpTo(Screen.Home.route) {
+                                                                inclusive = true
+                                                        }
+                                                }
+                                        }
+                                )
+                        }
+
+                        composable(Screen.Settings.route) {
+                                SettingsScreen(
+                                        authViewModel = authViewModel,
+                                        themeViewModel = themeViewModel,
+                                        onLogout = onLogout,
+                                        onNavigateToHome = {
+                                                navController.navigate(Screen.Home.route) {
+                                                        popUpTo(Screen.Home.route) {
+                                                                inclusive = true
+                                                        }
+                                                }
+                                        },
+                                        onNavigateToEqualizer = {
+                                                navController.navigate(Screen.Equalizer.route)
+                                        },
+                                        onNavigateToEditProfile = {
+                                                navController.navigate(Screen.EditProfile.route)
+                                        }
+                                )
+                        }
+
+                        composable(Screen.Equalizer.route) {
+                                EqualizerScreen(
+                                        themeViewModel = themeViewModel,
+                                        onBack = { navController.popBackStack() }
+                                )
+                        }
+
+                        composable(Screen.MusicPlayer.route) {
+                                MusicPlayerScreen(
+                                        musicViewModel = musicViewModel,
+                                        themeViewModel = themeViewModel,
+                                        onBackPress = { navController.popBackStack() },
+                                        onNavigateToEqualizer = {
+                                                navController.navigate(Screen.Equalizer.route)
+                                        }
+                                )
+                        }
+
+                        composable("for_you") {
+                                ForYouScreen(
+                                        musicViewModel = musicViewModel,
+                                        onSongClick = { song ->
+                                                musicViewModel.playSong(
+                                                        song,
+                                                        musicViewModel.allMusic.value
+                                                )
+                                        }
+                                )
+                        }
+
+                        composable("library") {
+                                LibraryScreen(
+                                        musicViewModel = musicViewModel,
+                                        authViewModel = authViewModel,
+                                        onSongClick = { song ->
+                                                musicViewModel.playSong(
+                                                        song,
+                                                        musicViewModel.allMusic.value
+                                                )
+                                        },
+                                        onNavigateToSettings = {
+                                                navController.navigate(Screen.Settings.route)
+                                        },
+                                        onNavigateToEditProfile = {
+                                                navController.navigate(Screen.EditProfile.route)
+                                        }
+                                )
+                        }
+
+                        composable(Screen.EditProfile.route) {
+                                EditProfileScreen(
+                                        authViewModel = authViewModel,
+                                        onBack = { navController.popBackStack() }
+                                )
+                        }
+
+                        composable("pro") { ProScreen() }
+
+                        composable(Screen.PlaylistDetail.route) { backStackEntry ->
+                                val playlistId = backStackEntry.arguments?.getString("playlistId") ?: ""
+                                PlaylistDetailScreen(
+                                        musicViewModel = musicViewModel,
+                                        playlistId = playlistId,
+                                        onBack = { navController.popBackStack() },
+                                        onSongClick = { songId ->
+                                                // Fetch the relevant songs for this playlist
+                                                val allPlaylists = musicViewModel.playlists.value + musicViewModel.albumsForYou.value
+                                                val playlist = allPlaylists.find { it.id == playlistId }
+                                                musicViewModel.playSongById(
+                                                        songId,
+                                                        playlist?.songs ?: musicViewModel.allMusic.value
+                                                )
+                                        }
+                                )
+                        }
+                }
+        }
 }
 
-/** Bottom Navigation Bar */
+/** Bottom Navigation Bar with 5 tabs like FlyMusicAI */
 @Composable
 private fun BottomNavigationBar(navController: NavHostController) {
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
 
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 8.dp) {
-        NavigationBarItem(
-                icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                label = { Text("Home") },
-                selected = currentRoute == Screen.Home.route,
-                onClick = {
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Home.route) { inclusive = true }
-                    }
-                },
-                colors =
-                        NavigationBarItemDefaults.colors(
-                                selectedIconColor = PrimaryPurple,
-                                selectedTextColor = PrimaryPurple,
-                                indicatorColor = PrimaryPurple.copy(alpha = 0.1f)
-                        )
-        )
+        NavigationBar(
+                containerColor = NavyBlue,
+                tonalElevation = 0.dp,
+                contentColor = androidx.compose.ui.graphics.Color.White
+        ) {
+                // Home
+                NavigationBarItem(
+                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                        label = { Text("Home", style = MaterialTheme.typography.labelSmall) },
+                        selected = currentRoute == Screen.Home.route,
+                        onClick = {
+                                navController.navigate(Screen.Home.route) {
+                                        popUpTo(Screen.Home.route) { inclusive = true }
+                                }
+                        },
+                        colors =
+                                NavigationBarItemDefaults.colors(
+                                        selectedIconColor = GoldAccent,
+                                        selectedTextColor = GoldAccent,
+                                        unselectedIconColor =
+                                                androidx.compose.ui.graphics.Color.White.copy(
+                                                        alpha = 0.6f
+                                                ),
+                                        unselectedTextColor =
+                                                androidx.compose.ui.graphics.Color.White.copy(
+                                                        alpha = 0.6f
+                                                ),
+                                        indicatorColor =
+                                                androidx.compose.ui.graphics.Color.Transparent
+                                )
+                )
 
-        NavigationBarItem(
-                icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                label = { Text("Search") },
-                selected = currentRoute == Screen.Search.route,
-                onClick = {
-                    navController.navigate(Screen.Search.route) { popUpTo(Screen.Home.route) }
-                },
-                colors =
-                        NavigationBarItemDefaults.colors(
-                                selectedIconColor = PrimaryCyan,
-                                selectedTextColor = PrimaryCyan,
-                                indicatorColor = PrimaryCyan.copy(alpha = 0.1f)
-                        )
-        )
+                // Search
+                NavigationBarItem(
+                        icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                        label = { Text("Search", style = MaterialTheme.typography.labelSmall) },
+                        selected = currentRoute == Screen.Search.route,
+                        onClick = {
+                                navController.navigate(Screen.Search.route) {
+                                        popUpTo(Screen.Home.route)
+                                        launchSingleTop = true
+                                }
+                        },
+                        colors =
+                                NavigationBarItemDefaults.colors(
+                                        selectedIconColor = GoldAccent,
+                                        selectedTextColor = GoldAccent,
+                                        unselectedIconColor =
+                                                androidx.compose.ui.graphics.Color.White.copy(
+                                                        alpha = 0.6f
+                                                ),
+                                        unselectedTextColor =
+                                                androidx.compose.ui.graphics.Color.White.copy(
+                                                        alpha = 0.6f
+                                                ),
+                                        indicatorColor =
+                                                androidx.compose.ui.graphics.Color.Transparent
+                                )
+                )
 
-        NavigationBarItem(
-                icon = { Icon(Icons.Default.Favorite, contentDescription = "Favorites") },
-                label = { Text("Favorites") },
-                selected = currentRoute == Screen.Favorites.route,
-                onClick = {
-                    navController.navigate(Screen.Favorites.route) { popUpTo(Screen.Home.route) }
-                },
-                colors =
-                        NavigationBarItemDefaults.colors(
-                                selectedIconColor = PrimaryPurple,
-                                selectedTextColor = PrimaryPurple,
-                                indicatorColor = PrimaryPurple.copy(alpha = 0.1f)
-                        )
-        )
+                // For You
+                NavigationBarItem(
+                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "For You") },
+                        label = { Text("For You", style = MaterialTheme.typography.labelSmall) },
+                        selected = currentRoute == "for_you",
+                        onClick = {
+                                navController.navigate("for_you") {
+                                        popUpTo(Screen.Home.route)
+                                        launchSingleTop = true
+                                }
+                        },
+                        colors =
+                                NavigationBarItemDefaults.colors(
+                                        selectedIconColor = GoldAccent,
+                                        selectedTextColor = GoldAccent,
+                                        unselectedIconColor =
+                                                androidx.compose.ui.graphics.Color.White.copy(
+                                                        alpha = 0.6f
+                                                ),
+                                        unselectedTextColor =
+                                                androidx.compose.ui.graphics.Color.White.copy(
+                                                        alpha = 0.6f
+                                                ),
+                                        indicatorColor =
+                                                androidx.compose.ui.graphics.Color.Transparent
+                                )
+                )
 
-        NavigationBarItem(
-                icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                label = { Text("Settings") },
-                selected = currentRoute == Screen.Settings.route,
-                onClick = {
-                    navController.navigate(Screen.Settings.route) { popUpTo(Screen.Home.route) }
-                },
-                colors =
-                        NavigationBarItemDefaults.colors(
-                                selectedIconColor = PrimaryCyan,
-                                selectedTextColor = PrimaryCyan,
-                                indicatorColor = PrimaryCyan.copy(alpha = 0.1f)
-                        )
-        )
-    }
+                // Library
+                NavigationBarItem(
+                        icon = { Icon(Icons.Default.LibraryMusic, contentDescription = "Library") },
+                        label = { Text("Library", style = MaterialTheme.typography.labelSmall) },
+                        selected = currentRoute == "library",
+                        onClick = {
+                                navController.navigate("library") {
+                                        popUpTo(Screen.Home.route)
+                                        launchSingleTop = true
+                                }
+                        },
+                        colors =
+                                NavigationBarItemDefaults.colors(
+                                        selectedIconColor = GoldAccent,
+                                        selectedTextColor = GoldAccent,
+                                        unselectedIconColor =
+                                                androidx.compose.ui.graphics.Color.White.copy(
+                                                        alpha = 0.6f
+                                                ),
+                                        unselectedTextColor =
+                                                androidx.compose.ui.graphics.Color.White.copy(
+                                                        alpha = 0.6f
+                                                ),
+                                        indicatorColor =
+                                                androidx.compose.ui.graphics.Color.Transparent
+                                )
+                )
+
+                // Pro
+                NavigationBarItem(
+                        icon = {
+                                Icon(
+                                        Icons.Default.WorkspacePremium,
+                                        contentDescription = "Pro",
+                                        tint = if (currentRoute == "pro") GoldAccent else TealAccent
+                                )
+                        },
+                        label = {
+                                Text(
+                                        "Pro",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color =
+                                                if (currentRoute == "pro") GoldAccent
+                                                else TealAccent
+                                )
+                        },
+                        selected = currentRoute == "pro",
+                        onClick = {
+                                navController.navigate("pro") {
+                                        popUpTo(Screen.Home.route)
+                                        launchSingleTop = true
+                                }
+                        },
+                        colors =
+                                NavigationBarItemDefaults.colors(
+                                        selectedIconColor = GoldAccent,
+                                        selectedTextColor = GoldAccent,
+                                        unselectedIconColor = TealAccent,
+                                        unselectedTextColor = TealAccent,
+                                        indicatorColor =
+                                                androidx.compose.ui.graphics.Color.Transparent
+                                )
+                )
+        }
 }
 
-/** Mini player at the bottom with playback controls */
 @Composable
 private fun MiniPlayer(
         song: com.example.flymusicai.data.Music,
@@ -241,75 +450,82 @@ private fun MiniPlayer(
         onNextClick: () -> Unit = {},
         onClick: () -> Unit
 ) {
-    Card(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(8.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors =
-                    CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Row(
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+        Surface(
+                modifier =
+                        Modifier.fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .height(64.dp)
+                                .clickable(onClick = onClick),
+                shape = RoundedCornerShape(12.dp),
+                color = NavySurface,
+                tonalElevation = 8.dp
         ) {
-            AsyncImage(
-                    model = song.coverImageUrl,
-                    contentDescription = song.title,
-                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
-            )
+                Row(
+                        modifier =
+                                Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                ) {
+                        AsyncImage(
+                                model = song.coverImageUrl,
+                                contentDescription = song.title,
+                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                        )
 
-            Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                        text = song.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                        text = song.artist,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                )
-            }
+                        Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                        text = song.title,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                        text = song.artist,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = AmberGold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                )
+                        }
 
-            // Playback controls
-            Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                IconButton(onClick = onPreviousClick, modifier = Modifier.size(40.dp)) {
-                    Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Previous",
-                            tint = MaterialTheme.colorScheme.onSurface
-                    )
+                        // Playback controls (AmberGold as per Screenshot)
+                        Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                                IconButton(onClick = onPreviousClick) {
+                                        Icon(
+                                                imageVector = Icons.Default.SkipPrevious,
+                                                contentDescription = "Previous",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                        )
+                                }
+
+                                IconButton(onClick = onPlayPauseClick) {
+                                        Icon(
+                                                imageVector =
+                                                        if (isPlaying) Icons.Default.Pause
+                                                        else Icons.Default.PlayArrow,
+                                                contentDescription = "Play/Pause",
+                                                tint = AmberGold,
+                                                modifier = Modifier.size(32.dp)
+                                        )
+                                }
+
+                                IconButton(onClick = onNextClick) {
+                                        Icon(
+                                                imageVector = Icons.Default.SkipNext,
+                                                contentDescription = "Next",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                        )
+                                }
+                        }
                 }
-
-                IconButton(onClick = onPlayPauseClick, modifier = Modifier.size(40.dp)) {
-                    Icon(
-                            imageVector =
-                                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = PrimaryPurple,
-                            modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                IconButton(onClick = onNextClick, modifier = Modifier.size(40.dp)) {
-                    Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next",
-                            tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
         }
-    }
 }

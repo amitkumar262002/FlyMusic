@@ -2,39 +2,47 @@ package com.example.flymusicai.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// 🌌 Premium Fly Music - Navy & Gold Theme
-val DeepNavy = Color(0xFF0A192F) // Base Background
-val NavySurface = Color(0xFF112240) // Surface/Card Background
-val NavyLight = Color(0xFF172A45) // Elevated Background
+// 🌌 Premium Fly Music - Dark Green & Gold Theme (Updated from Image)
+val DeepNavy = Color(0xFF051315) // Deep Dark Green/Slate Background
+val NavySurface = Color(0xFF122529) // Dark Green Card Surface
+val NavyLight = Color(0xFF1A3236) // Lighter Green for Elevation
 
-// ☀️ Yellow-Orange Accents (Premium Gold feel)
-val AmberGold = Color(0xFFFFB600) // Primary Text/Icons
-val OrangeVibrant = Color(0xFFFF8C00) // Accent/Buttons
-val YellowSoft = Color(0xFFFFD700) // Secondary Text
+// ☀️ Rich Gold Accents
+val AmberGold = Color(0xFFFFC107) // Rich Gold/Yellow
+val OrangeVibrant = Color(0xFFFFB300) // Slightly Orangier Gold
+val YellowSoft = Color(0xFFFFD54F) // Soft Yellow
 
 // 🎭 Theme Colors
 val BackgroundDark = DeepNavy
 val SurfaceDark = NavySurface
 val CardDark = NavyLight
 
+// 🌊 Additional Colors (Used in aliases below)
+val LightBlue = Color(0xFF64FFDA)
+
+// 🎨 Missing Color Aliases (Referenced throughout the app)
+val NavyBlue = DeepNavy // Alias for primary background
+val DarkNavy = NavySurface // Alias for darker cards
+val GoldAccent = AmberGold // Alias for gold accent color
+val TealAccent = LightBlue // Alias for teal/cyan accent
+
 // 📝 Text Colors
-val TextPrimary = Color(0xFFFFB600) // Yellow-Orange
-val TextSecondary = Color(0xFFFFD700).copy(alpha = 0.8f) // Soft Yellow
-val TextTertiary = Color(0xFF8892B0) // Grayish Blue for small text
-val TextWhite = Color(0xFFF8F8F8) // Off-white
+val TextPrimary = Color(0xFFFFC107) // Gold Primary Text
+val TextSecondary = Color(0xFFE0E0E0).copy(alpha = 0.8f) // Light Grayish White
+val TextTertiary = Color(0xFFB0BEC5) // Blue Gray
+val TextWhite = Color(0xFFFFFFFF) // Pure White
 
 // 🔄 Backward Compatibility Aliases (Fixed to resolve all errors)
-val PrimaryPurple = AmberGold // Linked to Gold
-val PrimaryCyan = OrangeVibrant // Linked to Orange
-val PrimaryPink = AmberGold // Linked to Gold
-val SecondaryBlue = OrangeVibrant // Linked to Orange
+val PrimaryPurple = AmberGold
+val PrimaryCyan = OrangeVibrant
+val PrimaryPink = AmberGold
+val SecondaryBlue = OrangeVibrant
 val LightPink = YellowSoft
-val LightBlue = Color(0xFF64FFDA)
 val AccentMagenta = OrangeVibrant
 val GradientStart = AmberGold
 val GradientEnd = OrangeVibrant
 val SurfaceLight = Color(0xFFFFFFFF)
-val BackgroundLight = Color(0xFFF8F9FF)
+val BackgroundLight = Color(0xFFFFFFFF)
 val ProgressActive = AmberGold
 val ProgressInactive = NavyLight
 val PlayerBackground = DeepNavy
@@ -47,6 +55,6 @@ val LightBorder = Color(0xFFE0E0E0) // Light Border
 
 // Light Mode Text
 val LightTextPrimary = Color(0xFF1A1A1A) // Almost Black
-val LightTextSecondary = Color(0xFF666666) // Medium Gray
-val LightTextTertiary = Color(0xFF999999) // Light Gray
+val LightTextSecondary = Color(0xFF424242) // Dark Gray
+val LightTextTertiary = Color(0xFF757575) // Medium Gray
 val LightAccent = AmberGold // Keep gold accent in light mode

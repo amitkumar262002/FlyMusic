@@ -9,5 +9,7 @@ enum class PlaylistCategory {
     MOOD,
     HARYANVI,
     TELUGU,
-    BOLLYWOOD
+    BOLLYWOOD,
+    FOR_YOU,
+    ALBUM
 }

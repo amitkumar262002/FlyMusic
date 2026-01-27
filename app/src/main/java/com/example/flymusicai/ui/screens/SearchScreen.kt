@@ -1,227 +1,392 @@
 package com.example.flymusicai.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.flymusicai.ui.components.MusicCard
+import coil.compose.AsyncImage
+import com.example.flymusicai.data.Music
+import com.example.flymusicai.data.SearchCategories
 import com.example.flymusicai.ui.theme.*
 import com.example.flymusicai.viewmodel.MusicViewModel
+import java.util.Locale
 
-/** Search screen for finding music */
 @Composable
 fun SearchScreen(
         musicViewModel: MusicViewModel,
         onSongClick: (String) -> Unit,
-        onNavigateToHome: () -> Unit = {}
+        onNavigateToHome: () -> Unit
 ) {
+    // State
     var searchQuery by remember { mutableStateOf("") }
     val searchResults by musicViewModel.searchResults.collectAsState()
     val searchSuggestions by musicViewModel.searchSuggestions.collectAsState()
-    var showSuggestions by remember { mutableStateOf(false) }
+    val favoriteSongs by musicViewModel.favoriteSongs.collectAsState()
 
-    // Load popular suggestions on first launch
-    LaunchedEffect(Unit) { musicViewModel.loadPopularSuggestions() }
+    // Bottom sheet state
+    var selectedSongForOptions by remember { mutableStateOf<Music?>(null) }
+    var showSongOptions by remember { mutableStateOf(false) }
 
-    Column(
-            modifier =
-                    Modifier.fillMaxSize()
-                            .background(MaterialTheme.colorScheme.background)
-                            .padding(16.dp)
-    ) {
-        // 🎯 Premium Animated Logo - tap to go to Home
-        com.example.flymusicai.ui.components.CompactPremiumLogo(
-                onClick = onNavigateToHome,
-                modifier = Modifier.padding(bottom = 8.dp)
-        )
+    val context = LocalContext.current
 
-        Text(
-                text = "Search",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-        )
+    // Voice Search Launcher
+    val voiceSearchLauncher =
+            rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                if (result.resultCode == Activity.RESULT_OK) {
+                    val data = result.data
+                    val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                    if (!matches.isNullOrEmpty()) {
+                        searchQuery = matches[0]
+                        musicViewModel.searchMusic(searchQuery)
+                    }
+                }
+            }
 
-        Spacer(modifier = Modifier.height(16.dp))
+    // Function to start voice listening
+    fun startVoiceSearch() {
+        val intent =
+                Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(
+                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                    )
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to search...")
+                }
+        try {
+            voiceSearchLauncher.launch(intent)
+        } catch (e: Exception) {
+            // In a real app, show a Toast or Snackbar
+        }
+    }
 
-        // Search bar with suggestions
-        Column {
-            OutlinedTextField(
+    Column(modifier = Modifier.fillMaxSize().background(DeepNavy).statusBarsPadding()) {
+        // Search Header
+        Column(modifier = Modifier.fillMaxWidth().background(DeepNavy)) {
+            Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onNavigateToHome) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+
+                if (searchQuery.isEmpty()) {
+                    Text(
+                            text = "Mood and Genres",
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+
+            // Search Input Field
+            TextField(
                     value = searchQuery,
                     onValueChange = {
                         searchQuery = it
-                        showSuggestions = it.isNotEmpty()
-                        // Real-time search
-                        musicViewModel.searchMusic(it)
-                        // Update suggestions as you type
-                        if (it.isNotEmpty()) {
-                            musicViewModel.updateSearchSuggestions(it)
+                        if (it.isNotBlank()) {
+                            musicViewModel.searchMusic(it)
                         } else {
-                            musicViewModel.loadPopularSuggestions()
+                            musicViewModel.clearSearchSuggestions()
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search songs, artists, moods...") },
+                    placeholder = { Text("Search songs, artists...", color = TextSecondary) },
+                    modifier =
+                            Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    .height(56.dp)
+                                    .clip(RoundedCornerShape(28.dp))
+                                    .background(NavyLight),
+                    colors =
+                            TextFieldDefaults.colors(
+                                    focusedContainerColor = NavyLight,
+                                    unfocusedContainerColor = NavyLight,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    cursorColor = AmberGold,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent,
+                                    disabledIndicatorColor = Color.Transparent
+                            ),
                     leadingIcon = {
-                        Icon(imageVector = Icons.Default.Search, contentDescription = "Search")
+                        Icon(
+                                Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = TextSecondary
+                        )
                     },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(
                                     onClick = {
                                         searchQuery = ""
-                                        showSuggestions = false
-                                        musicViewModel.searchMusic("")
+                                        musicViewModel.clearSearchSuggestions()
                                     }
                             ) {
                                 Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "Clear"
+                                        Icons.Default.Close,
+                                        contentDescription = "Clear",
+                                        tint = TextSecondary
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = { startVoiceSearch() }) {
+                                Icon(
+                                        Icons.Default.Mic,
+                                        contentDescription = "Voice Search",
+                                        tint = AmberGold
                                 )
                             }
                         }
                     },
-                    shape = RoundedCornerShape(16.dp),
-                    colors =
-                            OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PrimaryPurple,
-                                    unfocusedBorderColor = TextSecondary.copy(alpha = 0.5f)
-                            ),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions =
+                            KeyboardActions(
+                                    onSearch = {
+                                        if (searchQuery.isNotBlank())
+                                                musicViewModel.searchMusic(searchQuery)
+                                    }
+                            )
             )
+        }
 
-            // Suggestions dropdown
-            if (searchSuggestions.isNotEmpty() && (showSuggestions || searchQuery.isEmpty())) {
-                Card(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors =
-                                CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surface
-                                ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                ) {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        if (searchQuery.isEmpty()) {
-                            Text(
-                                    text = "🔥 Popular Searches",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = PrimaryPurple,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        // Content
+        LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (searchQuery.isBlank()) {
+                // Recent Searches
+                if (searchSuggestions.isNotEmpty()) {
+                    item {
+                        Text(
+                                "Recent Searches",
+                                color = AmberGold,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                    items(searchSuggestions) { suggestion ->
+                        Row(
+                                modifier =
+                                        Modifier.fillMaxWidth()
+                                                .clickable {
+                                                    searchQuery = suggestion
+                                                    musicViewModel.searchMusic(suggestion)
+                                                }
+                                                .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(20.dp)
                             )
-                        } else {
-                            Text(
-                                    text = "Suggestions",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = PrimaryCyan,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(suggestion, color = Color.White, fontSize = 16.sp)
                         }
+                        Divider(color = NavyLight)
+                    }
+                }
 
-                        searchSuggestions.take(8).forEach { suggestion ->
-                            Row(
-                                    modifier =
-                                            Modifier.fillMaxWidth()
-                                                    .clickable {
-                                                        searchQuery = suggestion
-                                                        showSuggestions = false
-                                                        musicViewModel.searchMusic(suggestion)
-                                                    }
-                                                    .padding(horizontal = 8.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                        imageVector =
-                                                if (searchQuery.isEmpty())
-                                                        Icons.AutoMirrored.Filled.TrendingUp
-                                                else Icons.Default.Search,
-                                        contentDescription = null,
-                                        tint =
-                                                MaterialTheme.colorScheme.onSurface.copy(
-                                                        alpha = 0.6f
-                                                ),
-                                        modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                        text = suggestion,
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                )
+                // Moods & moments Section
+                item {
+                    Text(
+                            text = "Moods & moments",
+                            color = AmberGold,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                }
+
+                item {
+                    CategoryGrid(
+                            items = SearchCategories.moods,
+                            onItemClick = { mood ->
+                                searchQuery = mood
+                                musicViewModel.searchMusic(mood)
                             }
-                        }
+                    )
+                }
+
+                // Genres Section
+                item {
+                    Text(
+                            text = "Genres",
+                            color = AmberGold,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                }
+
+                item {
+                    CategoryGrid(
+                            items = SearchCategories.genres,
+                            onItemClick = { genre ->
+                                searchQuery = genre
+                                musicViewModel.searchMusic(genre)
+                            }
+                    )
+                }
+            } else {
+                // Search Results
+                if (searchResults.isEmpty()) {
+                    item {
+                        Box(
+                                modifier = Modifier.fillMaxWidth().padding(top = 50.dp),
+                                contentAlignment = Alignment.Center
+                        ) { Text("No results found for '$searchQuery'", color = TextSecondary) }
+                    }
+                } else {
+                    items(searchResults) { song ->
+                        SearchResultItem(
+                            song = song, 
+                            onClick = { onSongClick(song.id) },
+                            onMoreClick = {
+                                selectedSongForOptions = song
+                                showSongOptions = true
+                            }
+                        )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Options Bottom Sheet
+        if (showSongOptions && selectedSongForOptions != null) {
+            val song = selectedSongForOptions!!
+            com.example.flymusicai.ui.components.SongOptionsBottomSheet(
+                song = song,
+                onDismiss = { showSongOptions = false },
+                onPlayNext = { musicViewModel.playNext(it) },
+                onAddToQueue = { musicViewModel.addToQueue(it) },
+                onAddToPlaylist = { /* show playlist picker */ },
+                onDownload = { /* musicViewModel.downloadSong(it) */ },
+                onViewArtist = { /* Navigate to artist */ },
+                onShare = { musicViewModel.shareSong(context, it) },
+                onStartRadio = { musicViewModel.startRadio(it) },
+                onAddToLibrary = { musicViewModel.toggleFavorite(it) },
+                isFavorite = favoriteSongs.any { it.id == song.id },
+                onToggleFavorite = { musicViewModel.toggleFavorite(it) }
+            )
+        }
+    }
+}
 
-        // Search results
-        if (searchQuery.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
-                            modifier = Modifier.size(80.dp),
-                            tint = TextSecondary.copy(alpha = 0.3f)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                            text = "Search for your favorite music",
-                            color = TextSecondary,
-                            fontSize = 16.sp
-                    )
-                }
-            }
-        } else if (searchResults.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+@Composable
+fun SearchResultItem(song: Music, onClick: () -> Unit, onMoreClick: () -> Unit = {}) {
+    Row(
+            modifier =
+                    Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(NavyLight.copy(alpha = 0.5f))
+                            .clickable { onClick() }
+                            .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+                model = song.coverImageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                    text = song.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1
+            )
+            Text(
+                    text = song.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    maxLines = 1
+            )
+        }
+        
+        IconButton(onClick = onMoreClick) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "More",
+                tint = TextSecondary
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CategoryGrid(items: List<String>, onItemClick: (String) -> Unit) {
+    FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            maxItemsInEachRow = 2
+    ) {
+        items.forEach { item ->
+            Box(
+                    modifier =
+                            Modifier.weight(1f)
+                                    .height(56.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(NavyLight)
+                                    .clickable { onItemClick(item) }
+                                    .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterStart
+            ) {
                 Text(
-                        text = "No results found for \"$searchQuery\"",
-                        color = TextSecondary,
-                        fontSize = 16.sp
+                        text = item,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
                 )
             }
-        } else {
-            Text(
-                    text = "${searchResults.size} results found",
-                    color = TextSecondary,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(bottom = 12.dp)
-            )
-
-            LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    contentPadding = PaddingValues(bottom = 100.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(searchResults) { music ->
-                    MusicCard(
-                            music = music,
-                            onClick = { onSongClick(music.id) },
-                            isFavorite = musicViewModel.isFavorite(music.id),
-                            onFavoriteClick = { musicViewModel.toggleFavorite(music) }
-                    )
-                }
-            }
+        }
+        // If odd number of items, add a spacer to fill the last row
+        if (items.size % 2 != 0) {
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
