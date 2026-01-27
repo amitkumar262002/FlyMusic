@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.State
@@ -645,15 +646,22 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     /** Update notification service with current song */
     private fun updateNotificationService(song: Music, isPlaying: Boolean) {
         try {
+            Log.d("MusicViewModel", "🔔 Starting notification service for: ${song.title} - Playing: $isPlaying")
             val intent = Intent(getApplication(), com.example.flymusicai.service.MusicPlayerService::class.java)
             intent.putExtra("song_title", song.title)
             intent.putExtra("song_artist", song.artist)
             intent.putExtra("song_genre", song.genre)
             intent.putExtra("song_cover", song.coverImageUrl)
             intent.putExtra("is_playing", isPlaying)
-            ContextCompat.startForegroundService(getApplication(), intent)
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getApplication<Application>().startForegroundService(intent)
+            } else {
+                getApplication<Application>().startService(intent)
+            }
+            Log.d("MusicViewModel", "✅ Notification service started successfully")
         } catch (e: Exception) {
-            Log.e("MusicViewModel", "Failed to update notification service", e)
+            Log.e("MusicViewModel", "❌ Failed to update notification service", e)
         }
     }
 

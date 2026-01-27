@@ -77,6 +77,9 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.2.1")
     implementation("androidx.media3:media3-session:1.2.1")
     
+    // Media library for notification controls
+    implementation("androidx.media:media:1.7.0")
+    
     // Ktor HTTP Client for music streaming APIs
     implementation("io.ktor:ktor-client-android:2.3.7")
     implementation("io.ktor:ktor-client-okhttp:2.3.7")
