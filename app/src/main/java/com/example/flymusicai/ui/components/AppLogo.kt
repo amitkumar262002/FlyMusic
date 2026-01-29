@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shadow
@@ -35,7 +36,7 @@ fun FlyMusicAILogo(
 ) {
         // Animated rotation for music note
         val infiniteTransition = rememberInfiniteTransition(label = "logo_animation")
-        val rotation by
+        val animatedRotation by
                 infiniteTransition.animateFloat(
                         initialValue = -10f,
                         targetValue = 10f,
@@ -48,7 +49,7 @@ fun FlyMusicAILogo(
                 )
 
         // Pulse animation
-        val scale by
+        val animatedScale by
                 infiniteTransition.animateFloat(
                         initialValue = 0.95f,
                         targetValue = 1.05f,
@@ -72,8 +73,8 @@ fun FlyMusicAILogo(
                         modifier =
                                 Modifier.height(size.iconSize)
                                         .width(size.iconSize * 1.5f) // Maintain aspect ratio
-                                        .scale(scale)
-                                        .rotate(rotation),
+                                        .scale(animatedScale)
+                                        .rotate(animatedRotation),
                         contentScale = ContentScale.Fit
                 )
 
