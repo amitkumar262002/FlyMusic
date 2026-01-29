@@ -30,7 +30,7 @@ class AudioPlayerManager private constructor(private val context: Context) {
     companion object {
         private const val TAG = "AudioPlayerManager"
         private const val POSITION_UPDATE_INTERVAL = 100L // Update every 100ms
-        private const val SAVE_STATE_INTERVAL = 5000L // Save state every 5s
+        private const val SAVE_STATE_INTERVAL = 1000L // Save state every 1s for better accuracy
         private const val FADE_DURATION = 300L // Crossfade duration in ms
         private const val PREFS_NAME = "playback_state"
         private const val KEY_MEDIA_ID = "last_media_id"
@@ -317,10 +317,10 @@ class AudioPlayerManager private constructor(private val context: Context) {
         setReverb(reverbPresetName)
     }
 
-    /** Play a song from URL */
-    fun playSong(song: Music) {
+    /** Play a song from URL at specific position */
+    fun playSong(song: Music, startPositionMs: Long = 0) {
         try {
-            Log.d(TAG, "▶️ Playing: ${song.title} by ${song.artist}")
+            Log.d(TAG, "▶️ Playing: ${song.title} by ${song.artist} starting at ${startPositionMs}ms")
             Log.d(TAG, "URL: ${song.audioUrl}")
 
             if (song.audioUrl.isEmpty()) {
@@ -346,15 +346,18 @@ class AudioPlayerManager private constructor(private val context: Context) {
 
             // Check if it's likely a YouTube DASH stream
             if (song.id.startsWith("yt_") || song.audioUrl.contains("googlevideo.com")) {
-                // Force DASH if it looks like a YouTube stream but doesn't have extension
-                // Actually ExoPlayer handles DASH better if we don't force it unless it's a .mpd
-                // But we can set a custom metadata
                 mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.AUDIO_UNKNOWN)
             }
 
             val mediaItem = mediaItemBuilder.build()
 
             player.setMediaItem(mediaItem)
+
+            // Seek BEFORE preparing for efficient buffering
+            if (startPositionMs > 0) {
+                player.seekTo(startPositionMs)
+                _currentPositionMs.value = startPositionMs
+            }
 
             // Prepare and play with Fade-In
             player.prepare()
@@ -683,6 +686,9 @@ class AudioPlayerManager private constructor(private val context: Context) {
     fun getLastPlayedMediaId(): String? = prefs.getString(KEY_MEDIA_ID, null)
     
     fun getLastPlayedPosition(): Long = prefs.getLong(KEY_POSITION, 0L)
+
+    /** Get the media ID of the song currently loaded in the player */
+    fun getCurrentMediaId(): String? = player.currentMediaItem?.mediaId
 
     /** Update current position (manual call if needed) */
     fun updatePosition() {

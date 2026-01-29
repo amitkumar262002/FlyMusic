@@ -381,32 +381,31 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // RESUME PLAYBACK FEATURE: Check duplicate/reload
+        // SMART SYNC & RESUME FEATURE
         viewModelScope.launch {
-            delay(1000) // Wait for data load
+            delay(1200) // Ensure all music data handles are loaded
+            
+            val activeMediaId = audioPlayer.getCurrentMediaId()
             val lastMediaId = audioPlayer.getLastPlayedMediaId()
             val lastPosition = audioPlayer.getLastPlayedPosition()
 
-            if (lastMediaId != null && _currentSong.value == null
-            ) { // Only resume if nothing playing
-                Log.d(
-                        "MusicViewModel",
-                        "🔄 Attempting to resume last played song: $lastMediaId at $lastPosition"
-                )
-                val song = _allMusic.value.find { it.id == lastMediaId }
+            // State A: Already playing / paused in background (just sync UI)
+            if (activeMediaId != null) {
+                val activeSong = _allMusic.value.find { it.id == activeMediaId }
+                if (activeSong != null) {
+                    _currentSong.value = activeSong
+                    _isPlaying.value = audioPlayer.isPlaying.value
+                    Log.d("MusicViewModel", "🔗 Linked to active session: ${activeSong.title}")
+                    return@launch
+                }
+            }
 
-                if (song != null) {
-                    _currentSong.value = song
-
-                    playSong(song)
-
-                    if (lastPosition > 0) {
-                        viewModelScope.launch {
-                            // Wait for the song to start loading and player to be ready
-                            delay(1000)
-                            audioPlayer.seekTo(lastPosition)
-                        }
-                    }
+            // State B: Fresh start (resume where we left off)
+            if (lastMediaId != null && _currentSong.value == null) {
+                Log.d("MusicViewModel", "🔄 Resuming last session: $lastMediaId at $lastPosition")
+                val resumeSong = _allMusic.value.find { it.id == lastMediaId }
+                if (resumeSong != null) {
+                    playSong(resumeSong, startPositionMs = lastPosition)
                 }
             }
         }
@@ -878,10 +877,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Play a song */
-    fun playSong(song: Music, queue: List<Music> = listOf(song)) {
+    /** Play a song with optional start position for resume support */
+    fun playSong(song: Music, queue: List<Music> = listOf(song), startPositionMs: Long = 0) {
         viewModelScope.launch {
-            Log.d("MusicViewModel", "🎵 Attempting to play: ${song.title} by ${song.artist}")
+            Log.d("MusicViewModel", "🎵 Attempting to play: ${song.title} by ${song.artist} at ${startPositionMs}ms")
 
             // Check prefetch cache first for "Instant Play"
             var audioPath = prefetchCache[song.id]
@@ -992,7 +991,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             // Play using real audio player
             try {
                 Log.d("MusicViewModel", "🎧 Starting audio playback...")
-                audioPlayer.playSong(song.copy(audioUrl = audioPath))
+                audioPlayer.playSong(song.copy(audioUrl = audioPath), startPositionMs)
                 // Sync state immediately for "Instant Play" feeling
                 _isPlaying.value = true
                 Log.d("MusicViewModel", "✅ Playback started successfully!")
