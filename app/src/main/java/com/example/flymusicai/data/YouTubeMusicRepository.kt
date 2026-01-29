@@ -2,6 +2,7 @@ package com.example.flymusicai.data
 
 import com.example.flymusicai.api.YouTubeMusicService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 
 /**
@@ -12,6 +13,40 @@ object YouTubeMusicRepository {
 
     private val musicService = com.example.flymusicai.api.YouTubeMusicService()
     private val innerTubeService = com.example.flymusicai.api.innertube.YouTubeInnerTubeService()
+
+    /** 🛡️ Smart Filter: Removes duplicates (covers, making of, teaser, same song) */
+    private fun filterUniqueSongs(songs: List<Music>): List<Music> {
+        val seenTitles = mutableSetOf<String>()
+        val filtered = mutableListOf<Music>()
+        
+        // Patterns to filter out non-original versions
+        val noiseWords = listOf("making of", "teaser", "promo", "vlog", "bts", "interview", "full movie", "behind the scenes", "live performing", "reaction")
+        
+        songs.forEach { song ->
+            val titleLower = song.title.lowercase()
+            
+            // 1. Skip if it contains noise words
+            if (noiseWords.any { titleLower.contains(it) }) return@forEach
+            
+            // 2. Normalize title for comparison (Remove brackets, year, extra spaces)
+            val normalizedTitle = titleLower
+                .replace(Regex("\\(.*?\\)"), "")
+                .replace(Regex("\\[.*?\\]"), "")
+                .replace(Regex("\\b202[0-9]\\b"), "")
+                .replace("official audio", "")
+                .replace("official video", "")
+                .replace("lyric video", "")
+                .replace("full audio", "")
+                .trim()
+                .replace(Regex("\\s+"), " ")
+            
+            // 3. Keep only the first unique instance (usually the most relevant)
+            if (seenTitles.add(normalizedTitle)) {
+                filtered.add(song)
+            }
+        }
+        return filtered
+    }
 
     fun updateRegionAndLanguage(gl: String, hl: String) {
         innerTubeService.setRegionAndLanguage(gl, hl)
@@ -36,16 +71,16 @@ object YouTubeMusicRepository {
                 try {
                     val query =
                             when (category.lowercase()) {
-                                "bollywood", "hindi" -> "bollywood hindi hit songs 2024"
-                                "punjabi" -> "punjabi latest hits 2024"
-                                "english", "pop" -> "top pop songs 2024"
+                                "bollywood", "hindi" -> "bollywood hindi hit songs"
+                                "punjabi" -> "punjabi latest hits"
+                                "english", "pop" -> "top pop songs"
                                 "romantic" -> "new romantic hindi songs"
-                                "party" -> "latest party music 2024"
-                                "sadabahar", "old" -> "old hindi sadabahar songs 90's hits"
-                                "bhojpuri" -> "latest bhojpuri hit songs 2024"
-                                "haryanvi" -> "latest haryanvi songs 2024 hits"
+                                "party" -> "latest party music"
+                                "sadabahar", "old" -> "old hindi sadabahar songs hits"
+                                "bhojpuri" -> "latest bhojpuri hit songs"
+                                "haryanvi" -> "latest haryanvi songs hits"
                                 "workout" -> "gym workout motivation music"
-                                else -> "$category music 2024"
+                                else -> "$category music"
                             }
 
                     val songs = musicService.searchVideos(query).take(limit)
@@ -72,14 +107,26 @@ object YouTubeMusicRepository {
     suspend fun getSearchSuggestions(query: String): List<String> =
             withContext(Dispatchers.IO) { musicService.getSearchSuggestions(query) }
 
-    /** Get related music (recommendations) */
-    suspend fun getRelatedMusic(musicId: String): List<Music> =
+    /** Get related music (recommendations) using InnerTube's "Next" endpoint */
+    suspend fun getRelatedMusic(musicId: String, title: String? = null, artist: String? = null, limit: Int = 50): List<Music> =
             withContext(Dispatchers.IO) {
                 try {
-                    // If related songs API is not fully implemented, search for the artist
-                    // For now, let's use a smart search to simulate "For You"
-                    val suggestions =
-                            musicService.searchVideos("related to $musicId music").take(10)
+                    val id = musicId.removePrefix("yt_")
+                    
+                    // Priority 1: Real YouTube "Up Next" recommendations
+                    val related = innerTubeService.getRelatedSongs(id)
+                    if (related.isNotEmpty()) {
+                        return@withContext related.take(limit).map { it.toMusic("Recommended") }
+                    }
+                    
+                    // Priority 2: Fallback to smart search
+                    val query = if (title != null) {
+                        "more like $title $artist music official"
+                    } else {
+                        "more like $id music official"
+                    }
+                    
+                    val suggestions = musicService.searchVideos(query).take(limit)
                     suggestions.map { it.toMusic("Recommended") }
                 } catch (e: Exception) {
                     emptyList()
@@ -99,7 +146,10 @@ object YouTubeMusicRepository {
                                     "Haryanvi Top" to "Haryanvi",
                                     "Bhojpuri Hits" to "Bhojpuri",
                                     "Indie India" to "Indian indie",
-                                    "Devotional" to "Bhakti"
+                                    "Devotional" to "Bhakti",
+                                    "Workout" to "Workout",
+                                    "Party" to "Party",
+                                    "Sadabahar" to "Sadabahar",
                             )
 
                     categories.map { (name, category) ->
@@ -122,8 +172,28 @@ object YouTubeMusicRepository {
             }
 
     /** India Rising - Support multi-language hits (Hindi, Punjabi, Regional, Indie) */
-    suspend fun getIndiaRising(): List<Music> =
-            getMusicByCategory("hindi punjabi tamil telugu kannada malayalam latest 2024 2025 trending india rising indie rap", 100)
+    suspend fun getIndiaRising(): List<Music> = withContext(Dispatchers.IO) {
+        val keywords = listOf(
+            "latest trending songs india 2025",
+            "new viral songs india today",
+            "top hindi songs 2025 trending",
+            "new punjabi hit songs 2025",
+            "trending indie india songs 2025"
+        )
+        
+        val deferredSongs = keywords.map { keyword ->
+            async {
+                try {
+                    musicService.searchVideos(keyword).take(30).map { it.toMusic("India Rising") }
+                } catch (e: Exception) {
+                    emptyList<Music>()
+                }
+            }
+        }
+        
+        val allSongs = deferredSongs.flatMap { it.await() }
+        filterUniqueSongs(allSongs).distinctBy { it.id }.take(150)
+    }
 
     /** Romance Right Now */
     suspend fun getRomanceNow(): List<Music> =
@@ -133,9 +203,37 @@ object YouTubeMusicRepository {
     suspend fun getBestOf90s(): List<Music> =
             getMusicByCategory("90s hindi hit songs gold collection superhits", 100)
 
-    /** Hindi Hits - Trending in Bollywood */
-    suspend fun getHindiHits(): List<Music> =
-            getMusicByCategory("latest bollywood hindi hits 2024 2025 chartbusters", 100)
+    /** Hindi Hits - Trending in Bollywood (Ensures top 10 is always latest) */
+    suspend fun getHindiHits(): List<Music> = withContext(Dispatchers.IO) {
+        val keywords = listOf(
+            "latest bollywood hindi hits 2025 chartbusters",
+            "new hindi trending songs today",
+            "top 10 bollywood songs this week"
+        )
+        val songs = keywords.flatMap { kw -> 
+            try { musicService.searchVideos(kw).take(20).map { it.toMusic("Hindi Hits") } } catch(e: Exception) { emptyList() }
+        }
+        filterUniqueSongs(songs).distinctBy { it.id }
+    }
+
+    /** Bhojpuri Hits - Massive Unlimited Content (Supports Trending Top 10) */
+    suspend fun getPopularBhojpuri(): List<Music> = withContext(Dispatchers.IO) {
+        val keywords = listOf(
+            "latest bhojpuri hits 2025 trending",
+            "pawan singh new songs 2025",
+            "khesari lal yadav latest hits 2025",
+            "trending bhojpuri songs today",
+            "top bhojpuri dj remix 2025"
+        )
+        val deferred = keywords.map { kw ->
+            async {
+                try {
+                    musicService.searchVideos(kw).take(40).map { it.toMusic("Bhojpuri") }
+                } catch (e: Exception) { emptyList<Music>() }
+            }
+        }
+        filterUniqueSongs(deferred.flatMap { it.await() }).distinctBy { it.id }
+    }
 
     /** Albums for you - Massive curated collection (70+ real albums from 2020-2025) */
     suspend fun getAlbumsForYou(): List<Playlist> =
@@ -370,13 +468,50 @@ object YouTubeMusicRepository {
                     "Baarish Bilal Saeed Neha Kakkar"
                 )
                 
-                singleQueries.flatMap { query ->
-                    musicService.searchVideos(query).take(1).map { it.toMusic("Singles") }
+                val results = mutableListOf<Music>()
+                
+                // Add Latest Trending Keywords to Top Singles to ensure fresh top 10
+                val trendingKeywords = listOf("latest hits 2025", "top songs today india", "viral reels songs 2025")
+                val trendingDeferred = trendingKeywords.map { kw ->
+                    async { try { musicService.searchVideos(kw).take(10).map { it.toMusic("Singles") } } catch(e: Exception) { emptyList() } }
                 }
+                results.addAll(trendingDeferred.flatMap { it.await() })
+
+                val deferredSingles = singleQueries.chunked(10).map { batch ->
+                    async {
+                        val batchResults = mutableListOf<Music>()
+                        batch.forEach { query ->
+                            try {
+                                val songs = musicService.searchVideos(query).take(5)
+                                batchResults.addAll(songs.map { it.toMusic("Singles") })
+                            } catch (e: Exception) {}
+                        }
+                        batchResults
+                    }
+                }
+                
+                results.addAll(deferredSingles.flatMap { it.await() })
+                // Smart filter to ensure duplicates and trash versions are removed
+                filterUniqueSongs(results).distinctBy { it.id }.take(150)
             } catch (e: Exception) {
                 e.printStackTrace()
                 emptyList()
             }
+        }
+
+    suspend fun getCharts(limit: Int = 50): List<Music> =
+        withContext(Dispatchers.IO) {
+            try {
+                val songs = innerTubeService.getMusicCharts().take(limit)
+                songs.map { it.toMusic("Charts") }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+
+    suspend fun getMoodsAndGenres(): List<Pair<String, String>> =
+        withContext(Dispatchers.IO) {
+            innerTubeService.getMoodsAndGenres()
         }
 
     private fun com.example.flymusicai.api.SongDetails.toMusic(genre: String): Music {

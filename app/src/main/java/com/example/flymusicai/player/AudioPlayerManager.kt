@@ -23,14 +23,30 @@ import kotlinx.coroutines.launch
 /**
  * 🎵 Advanced Audio Player Manager Professional audio playback with ExoPlayer and audio effects
  * Features: Gapless playback, audio effects, crossfade, error recovery
+ * Refactored to SINGLETON to ensure Service and ViewModel share the same player.
  */
-class AudioPlayerManager(private val context: Context) {
+class AudioPlayerManager private constructor(private val context: Context) {
 
     companion object {
         private const val TAG = "AudioPlayerManager"
         private const val POSITION_UPDATE_INTERVAL = 100L // Update every 100ms
+        private const val SAVE_STATE_INTERVAL = 5000L // Save state every 5s
         private const val FADE_DURATION = 300L // Crossfade duration in ms
+        private const val PREFS_NAME = "playback_state"
+        private const val KEY_MEDIA_ID = "last_media_id"
+        private const val KEY_POSITION = "last_position_ms"
+        
+        @Volatile
+        private var instance: AudioPlayerManager? = null
+
+        fun getInstance(context: Context): AudioPlayerManager {
+            return instance ?: synchronized(this) {
+                instance ?: AudioPlayerManager(context.applicationContext).also { instance = it }
+            }
+        }
     }
+
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     // ExoPlayer instance
     @androidx.media3.common.util.UnstableApi
@@ -39,10 +55,10 @@ class AudioPlayerManager(private val context: Context) {
                     .setLoadControl(
                         androidx.media3.exoplayer.DefaultLoadControl.Builder()
                             .setBufferDurationsMs(
-                                1000, // MIN_BUFFER_MS: starts playback after 1s buffered (Faster!)
-                                20000, // MAX_BUFFER_MS
-                                500,  // BUFFER_FOR_PLAYBACK_MS
-                                1000  // BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+                                2500,   // MIN_BUFFER_MS: (Fixed) Must be >= AfterRebufferMs
+                                60000,  // MAX_BUFFER_MS: buffer up to 60s
+                                1000,   // BUFFER_FOR_PLAYBACK_MS: starts playing after 1s
+                                2000    // BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS: Must be <= minBufferMs
                             )
                             .setPrioritizeTimeOverSizeThresholds(true)
                             .build()
@@ -102,11 +118,14 @@ class AudioPlayerManager(private val context: Context) {
     // Coroutine for position updates
     private val scope = CoroutineScope(Dispatchers.Main)
     private var positionUpdateJob: Job? = null
+    private var fadeJob: Job? = null
 
     init {
         setupPlayer()
         setupAudioEffects()
         startPositionUpdater()
+        // Initial volume is 0 for fade-in on first play
+        player.volume = 0f
     }
 
     /** Setup ExoPlayer with listeners */
@@ -160,17 +179,22 @@ class AudioPlayerManager(private val context: Context) {
                         _isPlaying.value = false
                         _isBuffering.value = false
 
-                        val errorMessage =
-                                when (error.errorCode) {
-                                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
-                                            "Network connection failed"
-                                    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
-                                            "Audio file not found"
-                                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ->
-                                            "Audio decoder initialization failed"
-                                    PlaybackException.ERROR_CODE_TIMEOUT -> "Connection timeout"
-                                    else -> "Playback error: ${error.message}"
-                                }
+                        // Detect 403 Specialized error for auto-retry
+                        val cause = error.cause
+                        val is403 = cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException 
+                                    && cause.responseCode == 403
+
+                        val errorMessage = when {
+                            is403 -> "ERROR_EXPIRED_URL"
+                            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
+                                "Network connection failed"
+                            error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
+                                "Audio file not found"
+                            error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ->
+                                "Audio decoder initialization failed"
+                            error.errorCode == PlaybackException.ERROR_CODE_TIMEOUT -> "Connection timeout"
+                            else -> "Playback error: ${error.message}"
+                        }
 
                         onError?.invoke(errorMessage)
                     }
@@ -196,61 +220,77 @@ class AudioPlayerManager(private val context: Context) {
             return
         }
 
-        Log.d(TAG, "Setting up audio effects for session: $sessionId")
+        Log.d(TAG, "🚀 [PRO] Setting up premium audio engine for session: $sessionId")
 
-        // Release old effects if any
-        releaseEffectsOnly()
+        scope.launch(Dispatchers.Default) {
+            // Release old effects if any to avoid session leaks
+            releaseEffectsOnly()
 
-        // Initialize Equalizer
-        try {
-            equalizer = Equalizer(0, sessionId).apply {
-                enabled = isEqualizerEnabled
+            // Initialize Equalizer with non-blocking retry logic and priority fallback
+            var retryCount = 0
+            while (retryCount < 3 && equalizer == null) {
+                try {
+                    // Try with high priority first, fallback to 0 if it fails
+                    val priority = if (retryCount == 0) 100 else 0
+                    equalizer = Equalizer(priority, sessionId).apply {
+                        enabled = isEqualizerEnabled
+                    }
+                    Log.d(TAG, "✅ Equalizer initialized with ${equalizer?.numberOfBands} bands (priority: $priority)")
+                    break
+                } catch (e: Exception) {
+                    Log.w(TAG, "⚠️ Equalizer init attempt ${retryCount + 1} failed: ${e.message}")
+                    retryCount++
+                    delay(500) // Give system a bit more time
+                }
             }
-            Log.d(TAG, "Equalizer initialized with ${equalizer?.numberOfBands} bands")
-        } catch (e: Exception) {
-            Log.w(TAG, "Equalizer not supported on this device")
-            equalizer = null
-        }
 
-        // Initialize Bass Boost
-        try {
-            bassBoost = BassBoost(0, sessionId).apply { enabled = false }
-            Log.d(TAG, "Bass Boost initialized")
-        } catch (e: Exception) {
-            Log.w(TAG, "Bass Boost not supported on this device")
-            bassBoost = null
-        }
+            // Initialize Bass Boost (High Priority)
+            try {
+                bassBoost = BassBoost(100, sessionId).apply {
+                    enabled = bassBoostLevel > 0
+                }
+                Log.d(TAG, "✅ Professional Bass Boost engine initialized")
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Bass Boost not supported on this device session")
+                bassBoost = null
+            }
 
-        // Initialize Loudness Enhancer
-        try {
-            loudnessEnhancer =
-                    android.media.audiofx.LoudnessEnhancer(sessionId).apply { enabled = false }
-            Log.d(TAG, "Loudness Enhancer initialized")
-        } catch (e: Exception) {
-            Log.w(TAG, "Loudness Enhancer not supported on this device")
-            loudnessEnhancer = null
-        }
+            // Initialize Virtualizer (3D Surround)
+            try {
+                virtualizer = Virtualizer(100, sessionId).apply {
+                    enabled = virtualizerLevel > 0
+                }
+                Log.d(TAG, "✅ 3D Virtualizer engine initialized")
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Virtualizer not supported")
+                virtualizer = null
+            }
 
-        // Initialize Virtualizer
-        try {
-            virtualizer = Virtualizer(0, sessionId).apply { enabled = false }
-            Log.d(TAG, "Virtualizer initialized")
-        } catch (e: Exception) {
-            Log.w(TAG, "Virtualizer not supported on this device")
-            virtualizer = null
-        }
+            // Initialize Loudness Enhancer (Extreme Gain)
+            try {
+                loudnessEnhancer = LoudnessEnhancer(sessionId).apply {
+                    enabled = loudnessLevel > 0
+                }
+                Log.d(TAG, "✅ Extreme Gain engine initialized")
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Loudness Enhancer not supported")
+                loudnessEnhancer = null
+            }
 
-        // Initialize Preset Reverb
-        try {
-            presetReverb = PresetReverb(0, sessionId).apply { enabled = false }
-            Log.d(TAG, "Preset Reverb initialized")
-        } catch (e: Exception) {
-            Log.w(TAG, "Preset Reverb not supported on this device")
-            presetReverb = null
-        }
+            // Initialize Preset Reverb
+            try {
+                presetReverb = PresetReverb(100, sessionId).apply {
+                    enabled = reverbPresetName != "None"
+                }
+                Log.d(TAG, "✅ Reverb engine initialized")
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Reverb not supported")
+                presetReverb = null
+            }
 
-        // Re-apply stored settings to new effects
-        applyCurrentSettings()
+            // Apply stored settings to new engine instances
+            applyCurrentSettings()
+        }
     }
 
     /** Release effects without releasing the player */
@@ -316,9 +356,11 @@ class AudioPlayerManager(private val context: Context) {
 
             player.setMediaItem(mediaItem)
 
-            // Prepare and play
+            // Prepare and play with Fade-In
             player.prepare()
+            player.volume = 0f
             player.playWhenReady = true
+            fadeIn()
 
             // Update state immediately
             _isPlaying.value = true
@@ -330,7 +372,7 @@ class AudioPlayerManager(private val context: Context) {
                 setupAudioEffects()
             }
 
-            Log.d(TAG, "✅ Song prepared and starting playback")
+            Log.d(TAG, "✅ Song prepared and starting playback with fade-in")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error playing song: ${song.title}", e)
             e.printStackTrace()
@@ -353,49 +395,117 @@ class AudioPlayerManager(private val context: Context) {
         }
     }
 
-    /** Pause playback */
+    /** Pause playback with Fade-Out */
     fun pause() {
         try {
-            player.pause()
-            _isPlaying.value = false
-            Log.d(TAG, "⏸️ Paused")
+            scope.launch {
+                fadeOut()
+                savePlaybackState() // Save state on pause
+                player.pause()
+                _isPlaying.value = false
+                Log.d(TAG, "⏸️ Paused with fade-out")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error pausing", e)
         }
     }
 
-    /** Resume playback */
+    /** Resume playback with Fade-In */
     fun play() {
         try {
             player.play()
+            fadeIn()
             _isPlaying.value = true
-            Log.d(TAG, "▶️ Playing")
+            Log.d(TAG, "▶️ Playing with fade-in")
         } catch (e: Exception) {
             Log.e(TAG, "Error playing", e)
         }
     }
 
-    /** Stop playback */
+    /** Stop playback with Fade-Out */
     fun stop() {
         try {
-            player.stop()
-            _isPlaying.value = false
-            _currentPosition.value = 0f
-            Log.d(TAG, "⏹️ Stopped")
+            scope.launch {
+                fadeOut()
+                player.stop()
+                _isPlaying.value = false
+                _currentPosition.value = 0f
+                Log.d(TAG, "⏹️ Stopped with fade-out")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping", e)
         }
     }
 
+    private fun fadeIn() {
+        fadeJob?.cancel()
+        val duration = FADE_DURATION
+        val steps = 15
+        val stepMs = duration / steps
+        val volumeStep = 1.0f / steps
+        
+        fadeJob = scope.launch {
+            var currentVol = player.volume
+            for (i in 1..steps) {
+                if (!isActive) break
+                delay(stepMs)
+                currentVol += volumeStep
+                player.volume = currentVol.coerceIn(0f, 1f)
+                if (currentVol >= 1.0f) break
+            }
+            player.volume = 1f
+        }
+    }
+
+    private suspend fun fadeOut() {
+        fadeJob?.cancel()
+        val duration = FADE_DURATION
+        val steps = 15
+        val stepMs = duration / steps
+        val volumeStep = player.volume / steps
+        
+        val job = scope.launch {
+            var currentVol = player.volume
+            for (i in 1..steps) {
+                if (!isActive) break
+                delay(stepMs)
+                currentVol -= volumeStep
+                player.volume = currentVol.coerceIn(0f, 1f)
+                if (currentVol <= 0f) break
+            }
+            player.volume = 0f
+        }
+        fadeJob = job
+        job.join() // Wait for fade out to complete before pausing/stopping
+    }
+
     /** Seek to position (0-1) */
     fun seekTo(position: Float) {
         try {
-            val seekPosition = (position * player.duration).toLong().coerceAtLeast(0)
-            player.seekTo(seekPosition)
-            _currentPosition.value = position.coerceIn(0f, 1f)
-            Log.d(TAG, "⏩ Seeked to: ${(position * 100).toInt()}%")
+            val duration = player.duration
+            if (duration > 0) {
+                val seekPosition = (position * duration).toLong().coerceAtLeast(0)
+                player.seekTo(seekPosition)
+                _currentPosition.value = position.coerceIn(0f, 1f)
+                Log.d(TAG, "⏩ Seeked to property ratio: ${(position * 100).toInt()}%")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error seeking", e)
+            Log.e(TAG, "Error seeking with ratio", e)
+        }
+    }
+
+    /** Seek to specific millisecond position */
+    fun seekTo(positionMs: Long) {
+        try {
+            player.seekTo(positionMs.coerceAtLeast(0))
+            val duration = player.duration
+            if (duration > 0) {
+                _currentPosition.value = (positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            }
+            _currentPositionMs.value = positionMs
+            Log.d(TAG, "⏩ Seeked to: $positionMs ms")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error seeking to ms", e)
         }
     }
 
@@ -537,17 +647,42 @@ class AudioPlayerManager(private val context: Context) {
         positionUpdateJob?.cancel()
         positionUpdateJob =
                 scope.launch {
+                    var lastSaveTime = 0L
                     while (isActive) {
                         if (_isPlaying.value && player.duration > 0) {
                             val duration = player.duration
                             val position = player.currentPosition
                             _currentPositionMs.value = position
                             _currentPosition.value = (position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                            
+                            // Save state periodically
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastSaveTime > SAVE_STATE_INTERVAL) {
+                                savePlaybackState()
+                                lastSaveTime = currentTime
+                            }
                         }
                         delay(POSITION_UPDATE_INTERVAL)
                     }
                 }
     }
+
+    private fun savePlaybackState() {
+        if (player.currentMediaItem != null) {
+            val mediaId = player.currentMediaItem?.mediaId
+            val position = player.currentPosition
+            if (mediaId != null) {
+                prefs.edit()
+                    .putString(KEY_MEDIA_ID, mediaId)
+                    .putLong(KEY_POSITION, position)
+                    .apply()
+            }
+        }
+    }
+    
+    fun getLastPlayedMediaId(): String? = prefs.getString(KEY_MEDIA_ID, null)
+    
+    fun getLastPlayedPosition(): Long = prefs.getLong(KEY_POSITION, 0L)
 
     /** Update current position (manual call if needed) */
     fun updatePosition() {

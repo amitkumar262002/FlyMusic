@@ -118,37 +118,38 @@ fun EqualizerScreen(
 
             // Frequency Bands Card
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = NavySurface),
-                shape = RoundedCornerShape(24.dp)
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = NavySurface.copy(alpha = 0.8f)),
+                shape = RoundedCornerShape(28.dp)
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+                Column(modifier = Modifier.padding(24.dp)) {
                     Text(
-                        "FREQUENCY BANDS",
+                        "FREQUENCY BANDS (PRO)",
                         color = AmberGold,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp,
                         modifier = Modifier.padding(bottom = 24.dp).align(Alignment.CenterHorizontally)
                     )
 
                     val labels = listOf("60Hz", "230Hz", "910Hz", "3.6kHz", "14kHz")
                     labels.forEachIndexed { index, label ->
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = label,
                                 color = if (equalizerEnabled) Color.White else Color.Gray,
                                 modifier = Modifier.width(60.dp),
-                                fontSize = 12.sp
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
                             )
                             
-                            // 10x vibes: allow up to 30dB visual feedback (mapped internally in manager)
                             Slider(
                                 value = eqBands.getOrElse(index) { 0f },
                                 onValueChange = { themeViewModel.updateEqualizerBand(index, it) },
-                                valueRange = -15f..15f, // Internal state is -15..15, manager applies 2x multiplier
+                                valueRange = -15f..15f,
                                 enabled = equalizerEnabled,
                                 modifier = Modifier.weight(1f),
                                 colors = SliderDefaults.colors(
@@ -159,10 +160,11 @@ fun EqualizerScreen(
                             )
                             
                             Text(
-                                text = "${(eqBands.getOrElse(index) { 0f } * 2).toInt()}dB", // Showing 2x (up to 30dB)
+                                text = "${eqBands.getOrElse(index) { 0f }.toInt()}dB",
                                 color = if (equalizerEnabled) AmberGold else Color.Gray,
                                 modifier = Modifier.width(45.dp),
                                 fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.End
                             )
                         }
@@ -183,29 +185,32 @@ fun EqualizerScreen(
 
             // Bass Boost
             EffectItem(
-                title = "Bass Boost (10x Vibes)",
+                title = "Super Bass Boost",
                 value = bassBoost,
                 onValueChange = { themeViewModel.setBassBoost(it) },
                 enabled = equalizerEnabled,
-                icon = Icons.Default.MusicNote
+                icon = Icons.Default.MusicNote,
+                accentColor = Color(0xFFFF4081)
             )
 
             // Loudness
             EffectItem(
-                title = "Loudness Boost (Extreme)",
+                title = "Extreme Master Gain",
                 value = loudness,
                 onValueChange = { themeViewModel.setLoudness(it) },
                 enabled = equalizerEnabled,
-                icon = Icons.Default.VolumeUp
+                icon = Icons.Default.VolumeUp,
+                accentColor = AmberGold
             )
 
             // Virtualizer
             EffectItem(
-                title = "Virtualizer (10x Vibes)",
+                title = "3D Surround Virtualizer",
                 value = virtualizer,
                 onValueChange = { themeViewModel.setVirtualizer(it) },
                 enabled = equalizerEnabled,
-                icon = Icons.Default.SurroundSound
+                icon = Icons.Default.SurroundSound,
+                accentColor = Color(0xFF00E5FF)
             )
 
             // Reverb Card
@@ -263,25 +268,27 @@ private fun EffectItem(
     value: Int,
     onValueChange: (Int) -> Unit,
     enabled: Boolean,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accentColor: Color = AmberGold
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         colors = CardDefaults.cardColors(containerColor = NavySurface),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(icon, null, tint = AmberGold, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(title, color = Color.White, fontWeight = FontWeight.Bold)
+                    Icon(icon, null, tint = accentColor, modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
-                Text("${value}%", color = AmberGold, fontWeight = FontWeight.Bold)
+                Text("${value}%", color = accentColor, fontWeight = FontWeight.Black, fontSize = 16.sp)
             }
             Slider(
                 value = value.toFloat(),
@@ -289,8 +296,8 @@ private fun EffectItem(
                 valueRange = 0f..100f,
                 enabled = enabled,
                 colors = SliderDefaults.colors(
-                    thumbColor = AmberGold,
-                    activeTrackColor = AmberGold,
+                    thumbColor = accentColor,
+                    activeTrackColor = accentColor,
                     inactiveTrackColor = Color.White.copy(alpha = 0.1f)
                 )
             )

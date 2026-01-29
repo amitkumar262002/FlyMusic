@@ -76,7 +76,7 @@ fun LoginScreen(
                         ) {
                                 Image(
                                         painter = painterResource(id = R.drawable.fly_music_logo),
-                                        contentDescription = "Fly Music Logo",
+                                        contentDescription = "FlyMusic AI Logo",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale =
                                                 ContentScale.Crop // Changed to Crop to fill gaps

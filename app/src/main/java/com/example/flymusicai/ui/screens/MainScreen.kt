@@ -26,11 +26,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
+import com.example.flymusicai.R
 import com.example.flymusicai.navigation.Screen
 import com.example.flymusicai.ui.theme.*
 import com.example.flymusicai.viewmodel.AuthViewModel
 import com.example.flymusicai.viewmodel.MusicViewModel
+import com.example.flymusicai.ui.components.UpdateDialog
 
 /** Main screen with bottom navigation */
 @Composable
@@ -49,6 +52,23 @@ fun MainScreen(
         // Sync Recently Played from DataStore on start
         val recentlyPlayedJson by themeViewModel.recentlyPlayedJson.collectAsState()
         val allMusic by musicViewModel.allMusic.collectAsState()
+        
+        // App Update Dialog
+        val appUpdateConfig by musicViewModel.appUpdateConfig.collectAsState()
+        var showUpdateDialog by remember { mutableStateOf(false) }
+
+        LaunchedEffect(appUpdateConfig) {
+            if (appUpdateConfig != null) {
+                showUpdateDialog = true
+            }
+        }
+
+        if (showUpdateDialog && appUpdateConfig != null) {
+            UpdateDialog(
+                config = appUpdateConfig!!,
+                onDismiss = { showUpdateDialog = false }
+            )
+        }
 
         LaunchedEffect(recentlyPlayedJson, allMusic) {
             if (allMusic.isNotEmpty()) {
@@ -136,6 +156,9 @@ fun MainScreen(
                                         },
                                         onPlaylistClick = { playlistId ->
                                                 navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                                        },
+                                        onArtistClick = { artistName ->
+                                                navController.navigate(Screen.ArtistDetail.createRoute(artistName))
                                         },
                                         onNavigateToSettings = {
                                                 navController.navigate(Screen.Settings.route)
@@ -274,6 +297,18 @@ fun MainScreen(
                                                         songId,
                                                         playlist?.songs ?: musicViewModel.allMusic.value
                                                 )
+                                        }
+                                )
+                        }
+
+                        composable(Screen.ArtistDetail.route) { backStackEntry ->
+                                val artistName = backStackEntry.arguments?.getString("artistName") ?: ""
+                                ArtistDetailScreen(
+                                        musicViewModel = musicViewModel,
+                                        artistName = artistName,
+                                        onBack = { navController.popBackStack() },
+                                        onSongClick = { songId, playlist ->
+                                                musicViewModel.playSongById(songId, playlist)
                                         }
                                 )
                         }
@@ -466,10 +501,12 @@ private fun MiniPlayer(
                         verticalAlignment = Alignment.CenterVertically
                 ) {
                         AsyncImage(
-                                model = song.coverImageUrl,
+                                model = song.coverImageUrl.ifEmpty { "https://c.saavncdn.com/artists/${song.artist.replace(" ", "_")}_500x500.jpg" },
                                 contentDescription = song.title,
                                 modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.Crop,
+                                placeholder = androidx.compose.ui.res.painterResource(com.example.flymusicai.R.drawable.music_placeholder),
+                                error = androidx.compose.ui.res.painterResource(com.example.flymusicai.R.drawable.music_placeholder)
                         )
 
                         Spacer(modifier = Modifier.width(12.dp))

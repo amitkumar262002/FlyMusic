@@ -23,7 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
+import com.example.flymusicai.R
 import com.example.flymusicai.data.Music
 import com.example.flymusicai.data.Playlist
 import com.example.flymusicai.ui.theme.*
@@ -186,7 +188,7 @@ fun PlaylistDetailScreen(
         com.example.flymusicai.ui.components.SongOptionsBottomSheet(
             song = song,
             onDismiss = { showSongOptions = false },
-            onPlayNext = { musicViewModel.playNext(it) },
+            onPlayNext = { musicViewModel.addToPlayNext(it) },
             onAddToQueue = { musicViewModel.addToQueue(it) },
             onAddToPlaylist = { /* show playlist picker */ },
             onDownload = { /* musicViewModel.downloadSong(it) */ },
@@ -210,12 +212,14 @@ fun SongListItem(index: Int, song: Music, onClick: () -> Unit, onMoreClick: () -
         verticalAlignment = Alignment.CenterVertically
     ) {
         AsyncImage(
-            model = song.coverImageUrl,
+            model = song.coverImageUrl.ifEmpty { "https://c.saavncdn.com/artists/${song.artist.replace(" ", "_")}_500x500.jpg" },
             contentDescription = null,
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            placeholder = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder),
+            error = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder)
         )
         
         Spacer(modifier = Modifier.width(16.dp))

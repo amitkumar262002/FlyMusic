@@ -105,7 +105,7 @@ fun PremiumAnimatedLogo(
                 // Logo Image
                 Image(
                         painter = painterResource(id = R.drawable.fly_music_logo),
-                        contentDescription = "Fly Music AI Logo",
+                        contentDescription = "FlyMusic AI Logo",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
                 )

@@ -43,4 +43,35 @@ object CacheManager {
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
+
+    /**
+     * 🚀 Prefetch initial data of a song for instant playback
+     * Downloads the first [bytes] of the stream into the persistent cache.
+     */
+    fun prefetchSongData(context: Context, url: String, bytes: Long = 512 * 1024) {
+        if (url.isEmpty() || url.contains("placeholder")) return
+        
+        val cache = getCache(context)
+        val dataSource = getCacheDataSourceFactory(context).createDataSource()
+        val dataSpec = androidx.media3.datasource.DataSpec.Builder()
+            .setUri(url)
+            .setLength(bytes)
+            .build()
+
+        // Run in background thread
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute {
+            try {
+                android.util.Log.d("CacheManager", "📥 Prefetching starting for: $url")
+                androidx.media3.datasource.cache.CacheWriter(
+                    dataSource as CacheDataSource,
+                    dataSpec,
+                    null,
+                    null
+                ).cache()
+                android.util.Log.d("CacheManager", "✅ Prefetching complete (${bytes/1024} KB)")
+            } catch (e: Exception) {
+                android.util.Log.w("CacheManager", "⚠️ Prefetching failed: ${e.message}")
+            }
+        }
+    }
 }

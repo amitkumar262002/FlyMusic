@@ -217,7 +217,9 @@ class YouTubeMusicService(private val apiKey: String = "") : MusicStreamingServi
                         title = streamInfo.name,
                         artist = streamInfo.uploaderName,
                         duration = streamInfo.duration.toInt(),
-                        coverImageUrl = streamInfo.thumbnails.firstOrNull()?.url ?: "",
+                        coverImageUrl = streamInfo.thumbnails.maxByOrNull { it.width }?.url
+                                ?: streamInfo.thumbnails.firstOrNull()?.url
+                                ?: "",
                         streamUrl = streamInfo.audioStreams.maxByOrNull { it.bitrate }?.content
                                         ?: "",
                         quality = "High"
@@ -244,7 +246,9 @@ class YouTubeMusicService(private val apiKey: String = "") : MusicStreamingServi
                             title = item.name,
                             artist = item.uploaderName,
                             duration = item.duration.toInt(),
-                            coverImageUrl = item.thumbnails.firstOrNull()?.url ?: "",
+                            coverImageUrl = item.thumbnails.maxByOrNull { it.width }?.url 
+                                    ?: item.thumbnails.firstOrNull()?.url 
+                                    ?: "",
                             streamUrl = "", // Fetch when needed
                             quality = "High"
                         )

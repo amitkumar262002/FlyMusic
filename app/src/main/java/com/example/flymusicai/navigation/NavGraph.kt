@@ -18,6 +18,9 @@ sealed class Screen(val route: String) {
         fun createRoute(playlistId: String) = "playlist_detail/$playlistId"
     }
     object EditProfile : Screen("edit_profile")
+    object ArtistDetail : Screen("artist_detail/{artistName}") {
+        fun createRoute(artistName: String) = "artist_detail/$artistName"
+    }
 }
 
 /** Bottom navigation items */

@@ -1,0 +1,154 @@
+plugins {
+    alias(libs.plugins.android.application)
+//    alias(libs.plugins.google.gms.google.services)
+}
+
+android {
+    namespace 'com.harsh.shah.saavnmp3'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.harsh.shah.saavnmp3"
+        minSdk 23
+        targetSdk 36
+        versionCode 7
+        versionName "1.0.13"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        //Universal APK Supporting All ABIs
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+    }
+
+    flavorDimensions "firebase"
+
+    productFlavors {
+        prod {
+            dimension "firebase"
+//            applicationIdSuffix ".prod"
+//            versionNameSuffix "-prod"
+            buildConfigField "boolean", "USE_FIREBASE", "true"
+        }
+        nofirebase {
+            dimension "firebase"
+//            applicationIdSuffix ".nofirebase"
+//            versionNameSuffix "-nofirebase"
+            buildConfigField "boolean", "USE_FIREBASE", "false"
+        }
+    }
+
+    dependenciesInfo {
+        // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
+        includeInApk = false
+    }
+
+
+    signingConfigs {
+        release {
+            storeFile file(System.getenv("KEYSTORE_PATH") ?: "my-release-key.jks")
+            storePassword System.getenv("KEYSTORE_PASSWORD")
+            keyAlias System.getenv("KEY_ALIAS")
+            keyPassword System.getenv("KEY_PASSWORD")
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        viewBinding true
+        buildConfig true
+    }
+
+    viewBinding {
+        enabled true
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.each { output ->
+            def outputFileName = "Melotune-${variant.versionName}-${variant.name}.apk"
+            output.outputFileName = outputFileName
+        }
+    }
+}
+
+gradle.startParameter.taskNames.any { task ->
+    if (task.toLowerCase().contains("prod")) {
+        apply plugin: libs.plugins.google.gms.google.services.get().pluginId
+    }
+}
+
+dependencies {
+
+    implementation libs.appcompat
+    implementation libs.material
+    implementation libs.activity
+    implementation libs.constraintlayout
+
+    testImplementation libs.junit
+    androidTestImplementation libs.ext.junit
+    androidTestImplementation libs.espresso.core
+
+    //ONLY FOR PROD FLAVOR BUILD
+    prodImplementation libs.firebase.analytics
+    prodImplementation libs.firebase.messaging
+
+    //FOR LAYOUT DIMENSIONS
+    implementation libs.ssp.android
+    implementation libs.sdp.android
+
+    //FOR APIs REQUEST AND RESPONSE PARSING
+    implementation libs.gson
+    implementation libs.okhttp.v4120
+
+    implementation libs.logging.interceptor
+
+    //FOR SHIMMERING LAYOUT (LOADING LAYOUT)
+    implementation libs.shimmer
+
+    //PULL TO REFRESH LAYOUT
+    implementation libs.swiperefreshlayout
+
+    // MediaSessionCompat and related media classes
+    implementation libs.media
+
+    //IMAGE LOADING LIBRARIES
+    implementation libs.glide
+    annotationProcessor libs.compiler
+    implementation libs.picasso
+
+    //IOS STYLE OVERSCROLL EFFECT
+    implementation libs.overscroll.decor.android
+
+    implementation libs.core
+
+    implementation libs.palette
+
+    //TRACK PLAYER / AUDIO PLAYER
+    implementation libs.bundles.media3Exoplayer
+
+    //Animated Sliding Drawer
+    implementation libs.slidingrootnav
+
+    // PAGING LIBRARY FOR RECYCLERVIEW
+    implementation libs.paginate
+
+    // FOR TAGGING METADATA INTO MP3 FILES
+    implementation libs.jaudiotagger
+
+    // LOCAL DATABASE FOR CACHING DATA
+    implementation libs.room.runtime
+    annotationProcessor libs.room.compiler
+
+}

@@ -2,7 +2,7 @@ package com.example.flymusicai.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// 🌌 Premium Fly Music - Dark Green & Gold Theme (Updated from Image)
+// 🌌 Premium FlyMusic AI - Dark Green & Gold Theme (Updated from Image)
 val DeepNavy = Color(0xFF051315) // Deep Dark Green/Slate Background
 val NavySurface = Color(0xFF122529) // Dark Green Card Surface
 val NavyLight = Color(0xFF1A3236) // Lighter Green for Elevation

@@ -4,7 +4,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -12,8 +11,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,18 +26,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.flymusicai.R
 import com.example.flymusicai.ui.theme.*
 import com.example.flymusicai.viewmodel.MusicViewModel
 import kotlin.math.abs
 
 /**
- *  Complete Music Player Screen All-in-one player with playback controls, settings, and advanced
+ * Complete Music Player Screen All-in-one player with playback controls, settings, and advanced
  * features
  */
 @Composable
@@ -66,7 +67,8 @@ fun MusicPlayerScreen(
     val sleepTimer by themeViewModel.sleepTimer.collectAsState()
     val trackDuration by musicViewModel.trackDuration.collectAsState()
     val trackDurationMs by musicViewModel.trackDurationMs.collectAsState()
-    val currentPositionMs by musicViewModel.currentPositionMs.collectAsState()
+    val currentPositionMsState = musicViewModel.currentPositionMs.collectAsState()
+    val currentPositionMs = currentPositionMsState.value
     val lyrics by musicViewModel.currentLyrics.collectAsState()
     val dynamicTheme by musicViewModel.dynamicThemeColors.collectAsState()
     val visualizerData by musicViewModel.visualizerData.collectAsState()
@@ -78,7 +80,9 @@ fun MusicPlayerScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val durationSeconds = if (trackDuration > 0) trackDuration else (currentSong?.duration ?: 210)
-    val elapsedSeconds = if (trackDurationMs > 0) (currentPositionMs / 1000).toInt() else (currentPosition * durationSeconds).toInt()
+    val elapsedSeconds =
+            if (trackDurationMs > 0) (currentPositionMs / 1000).toInt()
+            else (currentPosition * durationSeconds).toInt()
     val isFavorite = currentSong?.let { song -> favoriteSongs.any { it.id == song.id } } ?: false
 
     // Rotation animation
@@ -152,126 +156,181 @@ fun MusicPlayerScreen(
                             letterSpacing = 1.5.sp
                     )
                     Text(
-                            text = currentSong?.genre ?: "FLY MUSIC",
+                            text = currentSong?.genre ?: "FlyMusic AI",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = TextWhite
                     )
                 }
 
-                IconButton(onClick = { currentSong?.let { musicViewModel.toggleFavorite(it) } }) {
-                    Icon(
-                            if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            contentDescription = "Favorite",
-                            tint = if (isFavorite) Color(0xFFFF4081) else TextWhite,
-                            )
+                // Action Icons Row (Top Right)
+                IconButton(onClick = { /* More Options */}) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = TextWhite)
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Album Art with Enhanced Glow & Soundwave Effect
-            currentSong?.let { song ->
-                val isBuffering by musicViewModel.isBuffering.collectAsState()
-                
-                Box(
-                        modifier = Modifier.size(320.dp),
-                        contentAlignment = Alignment.Center
-                ) {
-                    // Outer Pulsating Glow
-                    val pulseScale by infiniteTransition.animateFloat(
-                        initialValue = 1f,
-                        targetValue = 1.15f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(2000, easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "pulse"
-                    )
+            // Main Content: Album Art + Side Action Bar
+            Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Album Art (Weight 0.85)
+                Box(modifier = Modifier.weight(0.85f), contentAlignment = Alignment.Center) {
+                    currentSong?.let { song ->
+                        val isBuffering by musicViewModel.isBuffering.collectAsState()
 
-                    // Soundwave Ring
-                    Box(
-                        modifier = Modifier
-                            .size(310.dp)
-                            .rotate(rotation * 1.5f)
-                            .border(
-                                width = 2.dp,
-                                brush = Brush.sweepGradient(
-                                    colors = listOf(
-                                        AmberGold.copy(alpha = 0f),
-                                        AmberGold,
-                                        AmberGold.copy(alpha = 0f)
-                                    )
-                                ),
-                                shape = CircleShape
+                        // Outer Pulsating Glow
+                        val pulseScale by
+                                infiniteTransition.animateFloat(
+                                        initialValue = 1f,
+                                        targetValue = 1.05f,
+                                        animationSpec =
+                                                infiniteRepeatable(
+                                                        animation =
+                                                                tween(
+                                                                        2000,
+                                                                        easing = FastOutSlowInEasing
+                                                                ),
+                                                        repeatMode = RepeatMode.Reverse
+                                                ),
+                                        label = "pulse"
+                                )
+
+                        // Glow Layer
+                        Box(
+                                modifier =
+                                        Modifier.size(280.dp * pulseScale)
+                                                .background(
+                                                        brush =
+                                                                Brush.radialGradient(
+                                                                        colors =
+                                                                                listOf(
+                                                                                        AmberGold
+                                                                                                .copy(
+                                                                                                        alpha =
+                                                                                                                0.3f
+                                                                                                ),
+                                                                                        Color.Transparent
+                                                                                )
+                                                                ),
+                                                        shape = CircleShape
+                                                )
+                        )
+
+                        // The Image (Clean Circle, NO Black Dot)
+                        AsyncImage(
+                                model = song.coverImageUrl,
+                                contentDescription = song.title,
+                                modifier =
+                                        Modifier.size(260.dp)
+                                                .clip(CircleShape)
+                                                .border(
+                                                        2.dp,
+                                                        AmberGold.copy(alpha = 0.5f),
+                                                        CircleShape
+                                                )
+                                                .rotate(if (isPlaying) rotation else 0f),
+                                contentScale = ContentScale.Crop
+                        )
+
+                        // Buffering Indicator
+                        if (isBuffering) {
+                            CircularProgressIndicator(
+                                    color = AmberGold,
+                                    modifier = Modifier.size(50.dp)
                             )
-                    )
+                        }
+                    }
+                }
 
-                    // Glow Layer 1
-                    Box(
-                            modifier = Modifier
-                                    .size(290.dp * pulseScale)
-                                    .background(
-                                            brush = Brush.radialGradient(
-                                                    colors = listOf(
-                                                            AmberGold.copy(alpha = 0.4f),
-                                                            Color.Transparent
-                                                    )
-                                            ),
-                                            shape = CircleShape
-                                    )
-                    )
+                // Side Action Bar (Weight 0.15)
+                Column(
+                        modifier = Modifier.weight(0.15f).fillMaxHeight(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.Bottom)
+                ) {
+                    // 1. Heart / Favorite
+                    IconButton(
+                            onClick = { currentSong?.let { musicViewModel.toggleFavorite(it) } }
+                    ) {
+                        Icon(
+                                if (isFavorite) Icons.Filled.Favorite
+                                else Icons.Filled.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = if (isFavorite) Color(0xFFFF4081) else TextWhite,
+                                modifier = Modifier.size(28.dp)
+                        )
+                    }
 
-                    // Glow Layer 2 (Static)
-                    Box(
-                        modifier = Modifier
-                            .size(285.dp)
-                            .shadow(32.dp, CircleShape, ambientColor = AmberGold, spotColor = AmberGold)
-                    )
+                    // 2. Lyrics
+                    IconButton(onClick = { showLyricsOverlay = true }) {
+                        Icon(
+                                Icons.Default.Lyrics,
+                                contentDescription = "Lyrics",
+                                tint = if (showLyricsOverlay) AmberGold else TextWhite,
+                                modifier = Modifier.size(28.dp)
+                        )
+                    }
 
-                    // The Image
-                    AsyncImage(
-                            model = song.coverImageUrl,
-                            contentDescription = song.title,
-                            modifier =
-                                    Modifier.size(260.dp)
-                                            .clip(CircleShape)
-                                            .border(4.dp, AmberGold.copy(alpha = 0.5f), CircleShape)
-                                            .rotate(if (isPlaying) rotation else 0f),
-                            contentScale = ContentScale.Crop
-                    )
-                    
-                    if (isBuffering) {
-                        CircularProgressIndicator(
-                            color = AmberGold,
-                            modifier = Modifier.size(64.dp)
+                    // 3. Add to Queue
+                    IconButton(onClick = { currentSong?.let { musicViewModel.addToQueue(it) } }) {
+                        Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Add to Queue",
+                                tint = TextWhite,
+                                modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    // 4. Download
+                    IconButton(onClick = { currentSong?.let { musicViewModel.downloadSong(it) } }) {
+                        Icon(
+                                Icons.Default.Download,
+                                contentDescription = "Download",
+                                tint = TextWhite,
+                                modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    // 5. Share
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    IconButton(
+                            onClick = { currentSong?.let { musicViewModel.shareSong(context, it) } }
+                    ) {
+                        Icon(
+                                Icons.Default.Share,
+                                contentDescription = "Share",
+                                tint = TextWhite,
+                                modifier = Modifier.size(28.dp)
                         )
                     }
                 }
             }
 
-                // --- Visualizer ---
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(30.dp)
-                        .padding(horizontal = 40.dp),
+            // --- Visualizer ---
+            Row(
+                    modifier = Modifier.fillMaxWidth().height(30.dp).padding(horizontal = 40.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.Bottom
-                ) {
-                    visualizerData.forEach { height ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(height.coerceIn(0.1f, 1f))
-                                .background(dynamicTheme.primaryColor.copy(alpha = 0.6f), RoundedCornerShape(2.dp))
-                        )
-                    }
+            ) {
+                visualizerData.forEach { height ->
+                    Box(
+                            modifier =
+                                    Modifier.weight(1f)
+                                            .fillMaxHeight(height.coerceIn(0.1f, 1f))
+                                            .background(
+                                                    dynamicTheme.primaryColor.copy(alpha = 0.6f),
+                                                    RoundedCornerShape(2.dp)
+                                            )
+                    )
                 }
+            }
 
-                Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-                // Song Info with Marquee Animation
+            // Song Info with Marquee Animation
             currentSong?.let { song ->
                 Text(
                         text = song.title,
@@ -280,10 +339,12 @@ fun MusicPlayerScreen(
                         color = TextWhite,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
-                        modifier = Modifier.fillMaxWidth().basicMarquee(
-                            iterations = Int.MAX_VALUE,
-                            repeatDelayMillis = 2000
-                        )
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .basicMarquee(
+                                                iterations = Int.MAX_VALUE,
+                                                repeatDelayMillis = 2000
+                                        )
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -301,9 +362,7 @@ fun MusicPlayerScreen(
                 Row(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = song.genre, fontSize = 14.sp, color = TextTertiary)
-                }
+                ) { Text(text = song.genre, fontSize = 14.sp, color = TextTertiary) }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -413,28 +472,6 @@ fun MusicPlayerScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-
-            // Lyrics Toggle Button (Advanced Feature)
-            IconButton(
-                onClick = { showLyricsOverlay = !showLyricsOverlay },
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(if (showLyricsOverlay) AmberGold else Color.White.copy(alpha = 0.1f), CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Lyrics,
-                    contentDescription = "Lyrics",
-                    tint = if (showLyricsOverlay) DeepNavy else AmberGold,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-            Text(
-                "Lyrics", 
-                color = if (showLyricsOverlay) AmberGold else TextTertiary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 4.dp)
-            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -597,48 +634,165 @@ fun MusicPlayerScreen(
 
             // Recommended Songs Section
             RecommendedSuggestionsSection(
-                musicViewModel = musicViewModel,
-                onSongClick = { song -> 
-                    musicViewModel.playSong(song, musicViewModel.playerSuggestions.value)
-                }
+                    musicViewModel = musicViewModel,
+                    onSongClick = { song ->
+                        musicViewModel.playSong(song, musicViewModel.playerSuggestions.value)
+                    }
             )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // NEW: Up Next / Queue Section (SaavnMp3 Style)
+            val queue by musicViewModel.currentQueue.collectAsState()
+            val queueIndex by musicViewModel.currentQueueIndex.collectAsState()
+
+            if (queue.isNotEmpty()) {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                    Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                                text = "Up Next",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextWhite
+                        )
+                        Text(
+                                text = "${queue.size - queueIndex - 1} songs remaining",
+                                fontSize = 12.sp,
+                                color = AmberGold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val upcomingSongs = queue.drop(queueIndex + 1)
+                    if (upcomingSongs.isEmpty()) {
+                        Box(
+                                modifier =
+                                        Modifier.fillMaxWidth()
+                                                .height(100.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(Color.White.copy(alpha = 0.05f)),
+                                contentAlignment = Alignment.Center
+                        ) { Text("No more songs in queue", color = TextTertiary) }
+                    } else {
+                        upcomingSongs.take(10).forEach { song ->
+                            Row(
+                                    modifier =
+                                            Modifier.fillMaxWidth()
+                                                    .padding(vertical = 8.dp)
+                                                    .clickable {
+                                                        musicViewModel.playSong(song, queue)
+                                                    },
+                                    verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                        model =
+                                                song.coverImageUrl.ifEmpty {
+                                                    "https://c.saavncdn.com/artists/${song.artist.replace(" ", "_")}_500x500.jpg"
+                                                },
+                                        contentDescription = null,
+                                        modifier =
+                                                Modifier.size(52.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(NavyLight),
+                                        contentScale = ContentScale.Crop,
+                                        error =
+                                                androidx.compose.ui.res.painterResource(
+                                                        id = android.R.drawable.ic_menu_gallery
+                                                )
+                                )
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                            text = song.title,
+                                            color = TextWhite,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                            text = song.artist,
+                                            color = TextTertiary,
+                                            fontSize = 13.sp,
+                                            maxLines = 1,
+                                            fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Icon(
+                                        Icons.Default.DragHandle,
+                                        contentDescription = null,
+                                        tint = AmberGold.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+
+                        if (upcomingSongs.size > 10) {
+                            TextButton(
+                                    onClick = { /* View Full Queue */},
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) { Text("View Full Queue", color = AmberGold) }
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(100.dp))
         }
 
         // Lyrics Overlay
         androidx.compose.animation.AnimatedVisibility(
-            visible = showLyricsOverlay,
-            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+                visible = showLyricsOverlay,
+                enter =
+                        androidx.compose.animation.slideInVertically(initialOffsetY = { it }) +
+                                androidx.compose.animation.fadeIn(),
+                exit =
+                        androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) +
+                                androidx.compose.animation.fadeOut()
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.95f))
-                    .clickable { showLyricsOverlay = false }
+                    modifier =
+                            Modifier.fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.95f))
+                                    .clickable { showLyricsOverlay = false }
             ) {
                 Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Lyrics", color = AmberGold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                                "Lyrics",
+                                color = AmberGold,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                        )
                         IconButton(onClick = { showLyricsOverlay = false }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                            Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color.White
+                            )
                         }
                     }
-                    
+
                     if (lyrics.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No lyrics available for this track", color = TextTertiary)
-                        }
+                        Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                        ) { Text("No lyrics available for this track", color = TextTertiary) }
                     } else {
-                        val currentSeconds = (currentPosition * (currentSong?.duration ?: 1)).toInt()
-                        val currentLyricIndex = lyrics.indexOfLast { it.timestamp <= currentSeconds }
+                        val currentSeconds =
+                                (currentPosition * (currentSong?.duration ?: 1)).toInt()
+                        val currentLyricIndex =
+                                lyrics.indexOfLast { it.timestamp <= currentSeconds }
                         val listState = rememberLazyListState()
-                        
+
                         LaunchedEffect(currentLyricIndex) {
                             if (currentLyricIndex >= 0) {
                                 listState.animateScrollToItem(maxOf(0, currentLyricIndex - 2))
@@ -646,21 +800,26 @@ fun MusicPlayerScreen(
                         }
 
                         LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(vertical = 100.dp),
-                            verticalArrangement = Arrangement.spacedBy(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(vertical = 100.dp),
+                                verticalArrangement = Arrangement.spacedBy(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             itemsIndexed(lyrics) { index, lyric ->
                                 val isActive = index == currentLyricIndex
                                 Text(
-                                    text = lyric.text,
-                                    fontSize = if (isActive) 26.sp else 20.sp,
-                                    fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold,
-                                    color = if (isActive) Color.White else Color.White.copy(alpha = 0.4f),
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                                        text = lyric.text,
+                                        fontSize = if (isActive) 26.sp else 20.sp,
+                                        fontWeight =
+                                                if (isActive) FontWeight.ExtraBold
+                                                else FontWeight.Bold,
+                                        color =
+                                                if (isActive) Color.White
+                                                else Color.White.copy(alpha = 0.4f),
+                                        textAlign = TextAlign.Center,
+                                        modifier =
+                                                Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                                 )
                             }
                         }
@@ -807,8 +966,8 @@ private fun AudioQualityDialog(
 
 @Composable
 private fun RecommendedSuggestionsSection(
-    musicViewModel: MusicViewModel,
-    onSongClick: (com.example.flymusicai.data.Music) -> Unit
+        musicViewModel: MusicViewModel,
+        onSongClick: (com.example.flymusicai.data.Music) -> Unit
 ) {
     val suggestions by musicViewModel.playerSuggestions.collectAsState()
     var showAll by remember { mutableStateOf(false) }
@@ -817,17 +976,17 @@ private fun RecommendedSuggestionsSection(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Up Next & Suggested",
-                color = TextWhite,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
+                    "Up Next & Suggested",
+                    color = TextWhite,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
             )
-            
+
             TextButton(onClick = { showAll = !showAll }) {
                 Text(if (showAll) "Show Less" else "View All", color = AmberGold)
             }
@@ -836,34 +995,48 @@ private fun RecommendedSuggestionsSection(
         Spacer(modifier = Modifier.height(12.dp))
 
         val displayCount = if (showAll) suggestions.size else 4
-        
+
         suggestions.take(displayCount).forEach { song ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-                    .clickable { onSongClick(song) },
-                verticalAlignment = Alignment.CenterVertically
+                    modifier =
+                            Modifier.fillMaxWidth().padding(vertical = 8.dp).clickable {
+                                onSongClick(song)
+                            },
+                    verticalAlignment = Alignment.CenterVertically
             ) {
                 AsyncImage(
-                    model = song.coverImageUrl,
-                    contentDescription = null,
-                    modifier = Modifier.size(50.dp).clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
+                        model =
+                                song.coverImageUrl.ifEmpty {
+                                    "https://c.saavncdn.com/artists/${song.artist.replace(" ", "_")}_500x500.jpg"
+                                },
+                        contentDescription = null,
+                        modifier =
+                                Modifier.size(52.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(NavyLight),
+                        contentScale = ContentScale.Crop,
+                        placeholder =
+                                androidx.compose.ui.res.painterResource(
+                                        id = com.example.flymusicai.R.drawable.music_placeholder
+                                ),
+                        error =
+                                androidx.compose.ui.res.painterResource(
+                                        id = com.example.flymusicai.R.drawable.music_placeholder
+                                )
                 )
-                
+
                 Spacer(modifier = Modifier.width(12.dp))
-                
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(song.title, color = TextWhite, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(song.artist, color = TextTertiary, fontSize = 12.sp, maxLines = 1)
                 }
-                
+
                 Icon(
-                    Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = AmberGold,
-                    modifier = Modifier.size(24.dp)
+                        Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = AmberGold,
+                        modifier = Modifier.size(24.dp)
                 )
             }
         }

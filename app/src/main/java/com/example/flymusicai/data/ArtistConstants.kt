@@ -1,46 +1,45 @@
 package com.example.flymusicai.data
 
-/** 🌟 Top Singers / Artists with real Spotify-quality image URLs */
+/**
+ * 🎤 Artist Information and Static Content
+ */
+data class ArtistInfo(
+    val name: String,
+    val imageUrl: String,
+    val genre: String
+)
+
 object ArtistConstants {
+    
     val TOP_SINGERS = listOf(
-        ArtistInfo("Arijit Singh", "https://i.scdn.co/image/ab6761610000e5eb92d01c5ce7efb5c1bfd07a38"),
-        ArtistInfo("Badshah", "https://i.scdn.co/image/ab6761610000e5eb4a8c2e1c7b5d0e6f8e7a5c3b"),
-        ArtistInfo("Neha Kakkar", "https://i.scdn.co/image/ab6761610000e5eb94cca56b7f3c6e9c59e2c7e0"),
-        ArtistInfo("Diljit Dosanjh", "https://i.scdn.co/image/ab6761610000e5eb6e835a500e791bf9c27a422a"),
-        ArtistInfo("Shreya Ghoshal", "https://i.scdn.co/image/ab6761610000e5eb619c8fa8a2e7f5f6c6a7e1cc"),
-        ArtistInfo("Guru Randhawa", "https://i.scdn.co/image/ab6761610000e5eb7d8e9f0e1e2f3e4e5f6e7f8e"),
-        ArtistInfo("Yo Yo Honey Singh", "https://i.scdn.co/image/ab6761610000e5eb2a3b4c5d6e7f8e9f0e1e2f3e"),
-        ArtistInfo("Sidhu Moose Wala", "https://i.scdn.co/image/ab6761610000e5eb6783083981880949d63c5d8a"),
-        ArtistInfo("Jubin Nautiyal", "https://i.scdn.co/image/ab6761610000e5eb5c6d7e8f9e0e1f2e3f4e5f6e"),
-        ArtistInfo("Darshan Raval", "https://i.scdn.co/image/ab6761610000e5eb3c9b8e5d7f6e8d9e0f1a2b3c"),
-        ArtistInfo("Armaan Malik", "https://i.scdn.co/image/ab6761610000e5eb942f360742183e8ce8a49156"),
-        ArtistInfo("Atif Aslam", "https://i.scdn.co/image/ab6761610000e5eb7da39dea0a72f581535fb11f"),
-        ArtistInfo("Sunidhi Chauhan", "https://i.scdn.co/image/ab6761610000e5ebad6b4904259b369527e53f5d"),
-        ArtistInfo("Karan Aujla", "https://i.scdn.co/image/ab6761610000e5eb7b64082729938b8d447f5a8c"),
-        ArtistInfo("AP Dhillon", "https://i.scdn.co/image/ab6761610000e5eb0b9a9578272f7c3f3f009951"),
-        ArtistInfo("King", "https://i.scdn.co/image/ab6761610000e5eb7a419c823f669e9a4f9a0d8c"),
-        ArtistInfo("Divine", "https://i.scdn.co/image/ab6761610000e5eb1d670f807f7c4627d3c5f87b"),
-        ArtistInfo("Taylor Swift", "https://i.scdn.co/image/ab6761610000e5eb859e061db37e1713dca73a4d"),
-        ArtistInfo("The Weeknd", "https://i.scdn.co/image/ab6761610000e5eb429881dba27b0b2e316d80d2"),
-        ArtistInfo("Drake", "https://i.scdn.co/image/ab6761610000e5eb429074a169b5c3d4f1c1a2b3")
+        ArtistInfo("Arijit Singh", "https://c.saavncdn.com/artists/Arijit_Singh_007_20230916071548_500x500.jpg", "Bollywood"),
+        ArtistInfo("Shreya Ghoshal", "https://c.saavncdn.com/artists/Shreya_Ghoshal_005_20230616120521_500x500.jpg", "Bollywood"),
+        ArtistInfo("Atif Aslam", "https://c.saavncdn.com/artists/Atif_Aslam_004_20230616120521_500x500.jpg", "Romantic"),
+        ArtistInfo("Neha Kakkar", "https://c.saavncdn.com/artists/Neha_Kakkar_006_20230616120521_500x500.jpg", "Bollywood"),
+        ArtistInfo("Jubin Nautiyal", "https://c.saavncdn.com/artists/Jubin_Nautiyal_005_20210616120521_500x500.jpg", "Bollywood"),
+        ArtistInfo("Armaan Malik", "https://c.saavncdn.com/artists/Armaan_Malik_500x500.jpg", "Bollywood"),
+        ArtistInfo("Sonu Nigam", "https://c.saavncdn.com/artists/Sonu_Nigam_006_20230616120521_500x500.jpg", "Bollywood"),
+        ArtistInfo("Diljit Dosanjh", "https://c.saavncdn.com/artists/Diljit_Dosanjh_004_20230616120521_500x500.jpg", "Punjabi"),
+        ArtistInfo("Badshah", "https://c.saavncdn.com/artists/Badshah_500x500.jpg", "Rap"),
+        ArtistInfo("Mohit Chauhan", "https://c.saavncdn.com/artists/Mohit_Chauhan_500x500.jpg", "Indie"),
+        ArtistInfo("Anirudh Ravichander", "https://c.saavncdn.com/artists/Anirudh_Ravichander_500x500.jpg", "Tamil"),
+        ArtistInfo("Sid Sriram", "https://c.saavncdn.com/artists/Sid_Sriram_500x500.jpg", "South Indian"),
+        ArtistInfo("Darshan Raval", "https://c.saavncdn.com/artists/Darshan_Raval_500x500.jpg", "Pop"),
+        ArtistInfo("Sunidhi Chauhan", "https://c.saavncdn.com/artists/Sunidhi_Chauhan_500x500.jpg", "Party"),
+        ArtistInfo("Udit Narayan", "https://c.saavncdn.com/artists/Udit_Narayan_500x500.jpg", "90s Hit"),
+        ArtistInfo("Sidhu Moose Wala", "https://c.saavncdn.com/artists/Sidhu_Moose_Wala_500x500.jpg", "Punjabi")
     )
 
-    /** 🎨 Category Specific Images */
     val CATEGORY_IMAGES = mapOf(
-        "Bollywood" to "https://images.unsplash.com/photo-1514525253361-b83f85f051c0?w=500&q=80",
-        "Romantic" to "https://images.unsplash.com/photo-1518621736915-f3b1c41bfd00?w=500&q=80",
-        "Party" to "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=500&q=80",
-        "Workout" to "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=500&q=80",
-        "Chill" to "https://images.unsplash.com/photo-1516057305928-17a7ac0d41bc?w=500&q=80",
-        "Study" to "https://images.unsplash.com/photo-1516979187457-637abb4f9353?w=500&q=80",
-        "Happy" to "https://images.unsplash.com/photo-1490730141103-6cac27aaab94?w=500&q=80",
-        "Sad" to "https://images.unsplash.com/photo-1516585427167-9f4af9627e6c?w=500&q=80"
+        "Bollywood" to "https://c.saavncdn.com/152/Dunki-Hindi-2023-20231218155909-500x500.jpg",
+        "Romantic" to "https://c.saavncdn.com/editorial/Romantic_Hits_Hindi_139364_500x500.jpg",
+        "Party" to "https://c.saavncdn.com/editorial/Party_All_Night_Hindi_500x500.jpg",
+        "90s Hits" to "https://c.saavncdn.com/editorial/90s_Bollywood_Hits_500x500.jpg",
+        "Top Charts" to "https://c.saavncdn.com/editorial/charts_TopWeeklyHindi_139364_20231201123456_500x500.jpg"
     )
 
     fun getArtistImage(name: String): String {
         return TOP_SINGERS.find { it.name.equals(name, ignoreCase = true) }?.imageUrl
-            ?: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80"
+            ?: "https://ui-avatars.com/api/?name=${name.replace(" ", "+")}&background=random&size=512"
     }
 }
-
-data class ArtistInfo(val name: String, val imageUrl: String)

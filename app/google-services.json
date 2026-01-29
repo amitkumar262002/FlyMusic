@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "130286330916",
+    "firebase_url": "https://flymusicai-default-rtdb.firebaseio.com",
+    "project_id": "flymusicai",
+    "storage_bucket": "flymusicai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:130286330916:android:8aaf471e7e1338f54124b1",
+        "android_client_info": {
+          "package_name": "com.example.flymusicai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBfkFEnouZW9LeCUifHnx1xEoSDQPdzZLI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -7,26 +7,33 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.flymusicai.data.LocalSongsDatabase
 import com.example.flymusicai.navigation.Screen
 import com.example.flymusicai.ui.screens.*
 import com.example.flymusicai.ui.theme.FlyMusicAITheme
 import com.example.flymusicai.viewmodel.AuthViewModel
 import com.example.flymusicai.viewmodel.MusicViewModel
-import kotlinx.coroutines.launch
 
-/** Main Activity - Entry point of the Fly Music AI app */
+/** Main Activity - Entry point of the FlyMusic AI app */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { FlyMusicAITheme { FlyMusicAIApp() } }
 
+        // Request Notification Permission for Android 13+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            val permission = android.Manifest.permission.POST_NOTIFICATIONS
+            if (checkSelfPermission(permission) !=
+                            android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(arrayOf(permission), 101)
+            }
+        }
+
+        setContent { FlyMusicAITheme { FlyMusicAIApp() } }
     }
 }
 
@@ -45,6 +52,51 @@ fun FlyMusicAIApp() {
 
     // Sync system mode once
     LaunchedEffect(isSystemDark) { themeViewModel.syncSystemDarkMode(isSystemDark) }
+
+    val sleepTimerRemaining by themeViewModel.sleepTimerRemaining.collectAsState()
+
+    // --- Advanced Audio Settings Sync ---
+    val equalizerEnabled by themeViewModel.equalizerEnabled.collectAsState()
+    val equalizerPreset by themeViewModel.equalizerPreset.collectAsState()
+    val eqBands by themeViewModel.eqBands.collectAsState()
+    val bassBoost by themeViewModel.bassBoost.collectAsState()
+    val virtualizer by themeViewModel.virtualizer.collectAsState()
+    val reverb by themeViewModel.reverb.collectAsState()
+    val playbackSpeed by themeViewModel.playbackSpeed.collectAsState()
+
+    LaunchedEffect(
+            equalizerEnabled,
+            equalizerPreset,
+            eqBands,
+            bassBoost,
+            virtualizer,
+            reverb,
+            playbackSpeed
+    ) {
+        musicViewModel.applyEqualizerSettings(equalizerEnabled, eqBands)
+        musicViewModel.setBassBoost(bassBoost)
+        musicViewModel.setVirtualizer(virtualizer)
+        musicViewModel.setReverb(reverb)
+        musicViewModel.setPlaybackSpeed(playbackSpeed)
+    }
+
+    // --- Regional & Language Sync ---
+    val musicLanguages by themeViewModel.musicLanguages.collectAsState()
+    val displayLanguage by themeViewModel.displayLanguage.collectAsState()
+
+    LaunchedEffect(musicLanguages, displayLanguage) {
+        musicViewModel.updateRegionAndLanguage(musicLanguages, displayLanguage)
+    }
+
+    // Handle Sleep Timer
+    LaunchedEffect(sleepTimerRemaining) {
+        if (sleepTimerRemaining == 0 && themeViewModel.sleepTimer.value > 0) {
+            if (musicViewModel.isPlaying.value) {
+                musicViewModel.togglePlayPause()
+            }
+            themeViewModel.setSleepTimer(0)
+        }
+    }
 
     FlyMusicAITheme(darkTheme = effectiveDarkMode) {
         NavHost(
@@ -103,53 +155,73 @@ fun FlyMusicAIApp() {
                         }
                 )
             }
-        }
-    }
 
-    // --- Advanced Audio Settings Sync ---
-    val equalizerEnabled by themeViewModel.equalizerEnabled.collectAsState()
-    val equalizerPreset by themeViewModel.equalizerPreset.collectAsState()
-    val bassBoost by themeViewModel.bassBoost.collectAsState()
-    val virtualizer by themeViewModel.virtualizer.collectAsState()
-    val reverb by themeViewModel.reverb.collectAsState()
-    val playbackSpeed by themeViewModel.playbackSpeed.collectAsState()
-    val sleepTimerRunning by themeViewModel.sleepTimerRunning.collectAsState()
-
-    LaunchedEffect(
-            equalizerEnabled,
-            equalizerPreset,
-            bassBoost,
-            virtualizer,
-            reverb,
-            playbackSpeed
-    ) {
-        val preset = com.example.flymusicai.data.EqualizerPresets.getPresetByName(equalizerPreset)
-        musicViewModel.applyEqualizerSettings(equalizerEnabled, preset.bands)
-        musicViewModel.setBassBoost(bassBoost)
-        musicViewModel.setVirtualizer(virtualizer)
-        musicViewModel.setReverb(reverb)
-        musicViewModel.setPlaybackSpeed(playbackSpeed)
-    }
-
-    // --- Regional & Language Sync ---
-    val musicLanguages by themeViewModel.musicLanguages.collectAsState()
-    val displayLanguage by themeViewModel.displayLanguage.collectAsState()
-
-    LaunchedEffect(musicLanguages, displayLanguage) {
-        musicViewModel.updateRegionAndLanguage(musicLanguages, displayLanguage)
-    }
-
-    val sleepTimerRemaining by themeViewModel.sleepTimerRemaining.collectAsState()
-
-    // Handle Sleep Timer
-    LaunchedEffect(sleepTimerRemaining) {
-        if (sleepTimerRemaining == 0 && themeViewModel.sleepTimer.value > 0) {
-            // Timer expired
-            if (musicViewModel.isPlaying.value) {
-                musicViewModel.togglePlayPause()
+            // Artist Detail Screen
+            composable(Screen.ArtistDetail.route) { backStackEntry ->
+                val artistName = backStackEntry.arguments?.getString("artistName") ?: "Unknown"
+                ArtistDetailScreen(
+                        musicViewModel = musicViewModel,
+                        artistName = artistName,
+                        onBack = { navController.popBackStack() },
+                        onSongClick = { songId, list ->
+                            musicViewModel.playSongById(songId, list)
+                            navController.navigate(Screen.MusicPlayer.createRoute(songId))
+                        }
+                )
             }
-            // Reset sleep timer in viewmodel to avoid multiple triggers
-            themeViewModel.setSleepTimer(0)
+        }
+
+        // --- Update Checker ---
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val updateManager = remember { com.example.flymusicai.manager.UpdateManager(context) }
+        var showUpdateDialog by remember { mutableStateOf(false) }
+        var updateInfo by remember {
+            mutableStateOf<com.example.flymusicai.manager.UpdateInfo?>(null)
+        }
+
+        LaunchedEffect(Unit) {
+            while (true) {
+                try {
+                    val info = updateManager.checkForUpdate()
+                    if (info != null) {
+                        updateInfo = info
+                        showUpdateDialog = true
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                kotlinx.coroutines.delay(3000) // Check every 3 seconds
+            }
+        }
+
+        if (showUpdateDialog && updateInfo != null) {
+            androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        if (updateInfo!!.showLaterButton) showUpdateDialog = false
+                    },
+                    title = { androidx.compose.material3.Text(updateInfo!!.title) },
+                    text = { androidx.compose.material3.Text(updateInfo!!.message) },
+                    confirmButton = {
+                        androidx.compose.material3.Button(
+                                onClick = {
+                                    val intent =
+                                            android.content.Intent(
+                                                    android.content.Intent.ACTION_VIEW,
+                                                    android.net.Uri.parse(updateInfo!!.updateLink)
+                                            )
+                                    context.startActivity(intent)
+                                }
+                        ) { androidx.compose.material3.Text(updateInfo!!.updateNowText) }
+                    },
+                    dismissButton =
+                            if (updateInfo!!.showLaterButton) {
+                                {
+                                    androidx.compose.material3.TextButton(
+                                            onClick = { showUpdateDialog = false }
+                                    ) { androidx.compose.material3.Text(updateInfo!!.laterText) }
+                                }
+                            } else null
+            )
         }
     }
 }

@@ -9,60 +9,67 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.Log
-import androidx.core.content.ContextCompat
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.flymusicai.ai.AIRecommender
+import com.example.flymusicai.data.AppUpdateConfig
+import com.example.flymusicai.data.IndianMusicDatabase
 import com.example.flymusicai.data.Music
 import com.example.flymusicai.data.MusicRepository
 import com.example.flymusicai.data.Playlist
 import com.example.flymusicai.data.PlaylistCategory
 import com.example.flymusicai.data.YouTubeMusicRepository
 import com.example.flymusicai.manager.DownloadManager
+import com.example.flymusicai.manager.UpdateManager
 import com.example.flymusicai.player.AudioPlayerManager
+import com.example.flymusicai.ui.theme.*
 import java.util.UUID
+import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlin.random.Random
-import androidx.compose.ui.graphics.Color
-import com.example.flymusicai.ui.theme.*
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.withContext
 
 /** Data class to hold adaptive theme colors */
 data class DynamicThemeColors(
-    val primaryColor: Color = AmberGold,
-    val backgroundGradient: List<Color> = listOf(Color(0xFF0A1612), Color(0xFF0D1F1A), Color(0xFF000000))
+        val primaryColor: Color = AmberGold,
+        val backgroundGradient: List<Color> =
+                listOf(Color(0xFF0A1612), Color(0xFF0D1F1A), Color(0xFF000000))
 )
 
 /** ViewModel for managing music playback, playlists, and AI recommendations */
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private val aiRecommender = AIRecommender()
-    private val audioPlayer = AudioPlayerManager(application.applicationContext)
+    private val audioPlayer = AudioPlayerManager.getInstance(application.applicationContext)
     private val downloadManager = DownloadManager(application.applicationContext)
+    private val updateManager = UpdateManager(application.applicationContext)
     private val youtubeService = com.example.flymusicai.api.YouTubeMusicService()
-    private val preferencesManager = com.example.flymusicai.datastore.PreferencesManager(application.applicationContext)
-    private val geminiService = com.example.flymusicai.api.GeminiAIService()
-    
+    private val preferencesManager =
+            com.example.flymusicai.datastore.PreferencesManager(application.applicationContext)
+    private val openAIService = com.example.flymusicai.api.OpenAIService()
+
     // Media notification receiver
-    private val mediaActionReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.getStringExtra("action")) {
-                "PLAY" -> play()
-                "PAUSE" -> pause()
-                "NEXT" -> playNext()
-                "PREVIOUS" -> playPrevious()
-                "STOP" -> stop()
+    private val mediaActionReceiver =
+            object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    when (intent?.getStringExtra("action")) {
+                        "PLAY" -> play()
+                        "PAUSE" -> pause()
+                        "NEXT" -> playNext()
+                        "PREVIOUS" -> playPrevious()
+                        "STOP" -> stop()
+                    }
+                }
             }
-        }
-    }
 
     // Music data
     private val _allMusic = MutableStateFlow<List<Music>>(emptyList())
@@ -99,7 +106,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     // 🤖 AI Assistant
     private val _aiResponse = MutableStateFlow("")
     val aiResponse: StateFlow<String> = _aiResponse.asStateFlow()
-    
+
     private val _isAILoading = MutableStateFlow(false)
     val isAILoading: StateFlow<Boolean> = _isAILoading.asStateFlow()
 
@@ -110,7 +117,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val isBuffering: StateFlow<Boolean> = audioPlayer.isBuffering
 
     // Actual track position/duration from player
-    val currentPositionMs: StateFlow<Long> = audioPlayer.currentPositionMs
+    private val _currentPositionMs = MutableStateFlow(0L)
+    val currentPositionMs: StateFlow<Long> = _currentPositionMs.asStateFlow()
+
     val trackDurationMs: StateFlow<Long> = audioPlayer.currentSongDurationMs
 
     private val _trackDuration = MutableStateFlow(0)
@@ -148,6 +157,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _recentlyPlayed = MutableStateFlow<List<Music>>(emptyList())
     val recentlyPlayed: StateFlow<List<Music>> = _recentlyPlayed.asStateFlow()
 
+    // Downloads
+    private val _downloadedMusic = MutableStateFlow<List<Music>>(emptyList())
+    val downloadedMusic: StateFlow<List<Music>> = _downloadedMusic.asStateFlow()
+
     // Home Section Categories
     private val _indiaRising = MutableStateFlow<List<Music>>(emptyList())
     val indiaRising: StateFlow<List<Music>> = _indiaRising.asStateFlow()
@@ -164,9 +177,35 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _albumsForYou = MutableStateFlow<List<Playlist>>(emptyList())
     val albumsForYou: StateFlow<List<Playlist>> = _albumsForYou.asStateFlow()
 
+    // App Update
+    private val _appUpdateConfig =
+            MutableStateFlow<com.example.flymusicai.data.AppUpdateConfig?>(null)
+    val appUpdateConfig: StateFlow<com.example.flymusicai.data.AppUpdateConfig?> =
+            _appUpdateConfig.asStateFlow()
+
+    private val _charts = MutableStateFlow<List<Music>>(emptyList())
+    val charts: StateFlow<List<Music>> = _charts.asStateFlow()
+
+    private val _moods =
+            MutableStateFlow<List<Pair<String, String>>>(emptyMap<String, String>().toList())
+    val moods: StateFlow<List<Pair<String, String>>> = _moods.asStateFlow()
+
     // Lyrics
-    private val _currentLyrics = MutableStateFlow<List<com.example.flymusicai.ui.screens.LyricLine>>(emptyList())
-    val currentLyrics: StateFlow<List<com.example.flymusicai.ui.screens.LyricLine>> = _currentLyrics.asStateFlow()
+    private val _currentLyrics =
+            MutableStateFlow<List<com.example.flymusicai.ui.screens.LyricLine>>(emptyList())
+    val currentLyrics: StateFlow<List<com.example.flymusicai.ui.screens.LyricLine>> =
+            _currentLyrics.asStateFlow()
+
+    // Per-Artist Songs
+    private val _artistSongs = MutableStateFlow<Map<String, List<Music>>>(emptyMap())
+    val dynamicArtistSongsMap: StateFlow<Map<String, List<Music>>> = _artistSongs.asStateFlow()
+
+    // Popular/Top Songs
+    private val _popularSongs = MutableStateFlow<List<Music>>(emptyList())
+    val popularSongs: StateFlow<List<Music>> = _popularSongs.asStateFlow()
+
+    private val _popularBhojpuri = MutableStateFlow<List<Music>>(emptyList())
+    val popularBhojpuri: StateFlow<List<Music>> = _popularBhojpuri.asStateFlow()
 
     // Shuffle and Repeat
     private val _isShuffleEnabled = MutableStateFlow(false)
@@ -183,20 +222,43 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val prefetchCache = mutableMapOf<String, String>()
 
     init {
+        com.example.flymusicai.player.DownloadHelper.init(application)
         loadMusicData()
         setupAudioPlayer()
         checkNetworkStatus()
         observeAudioSettings()
         startVisualizer()
         ensureForYouContent()
-        
+        refreshDownloads() // Load downloaded songs
+        checkForAppUpdate() // Check for updates
+
+        // Observe Real Downloads from Media3
+        viewModelScope.launch {
+            com.example.flymusicai.player.DownloadHelper.downloads.collect { downloadMap ->
+                downloadMap.values.forEach { download ->
+                    if (download.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
+                    ) {
+                        // When a real download completes, save metadata to our manager for library
+                        // display
+                        val song = _allMusic.value.find { it.id == download.request.id }
+                        song?.let {
+                            if (!downloadManager.isDownloaded(it.id)) {
+                                downloadManager.downloadSong(it)
+                                refreshDownloads()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Register media action receiver
         val filter = IntentFilter("com.example.flymusicai.MEDIA_ACTION")
         ContextCompat.registerReceiver(
-            application.applicationContext,
-            mediaActionReceiver,
-            filter,
-            ContextCompat.RECEIVER_NOT_EXPORTED
+                application.applicationContext,
+                mediaActionReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
         )
         // Periodic check to ensure For You is never empty
         viewModelScope.launch {
@@ -212,27 +274,27 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun observeAudioSettings() {
         // Observe Equalizer Enabled and Bands together
         viewModelScope.launch {
-            kotlinx.coroutines.flow.combine(
-                preferencesManager.equalizerEnabledFlow,
-                preferencesManager.band60HzFlow,
-                preferencesManager.band230HzFlow,
-                preferencesManager.band910HzFlow,
-                preferencesManager.band3600HzFlow,
-                preferencesManager.band14000HzFlow
-            ) { array -> 
-                val enabled = array[0] as Boolean
-                val bands = array.slice(1..5).map { it as Float }
-                enabled to bands
-            }.collect { (enabled, bands) ->
-                audioPlayer.applyEqualizerSettings(enabled, bands)
-            }
+            kotlinx.coroutines.flow
+                    .combine(
+                            preferencesManager.equalizerEnabledFlow,
+                            preferencesManager.band60HzFlow,
+                            preferencesManager.band230HzFlow,
+                            preferencesManager.band910HzFlow,
+                            preferencesManager.band3600HzFlow,
+                            preferencesManager.band14000HzFlow
+                    ) { array ->
+                        val enabled = array[0] as Boolean
+                        val bands = array.slice(1..5).map { it as Float }
+                        enabled to bands
+                    }
+                    .collect { (enabled, bands) ->
+                        audioPlayer.applyEqualizerSettings(enabled, bands)
+                    }
         }
 
         // Observe Bass Boost
         viewModelScope.launch {
-            preferencesManager.bassBoostFlow.collect { level ->
-                audioPlayer.setBassBoost(level)
-            }
+            preferencesManager.bassBoostFlow.collect { level -> audioPlayer.setBassBoost(level) }
         }
 
         // Observe Virtualizer
@@ -244,16 +306,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
         // Observe Loudness
         viewModelScope.launch {
-            preferencesManager.loudnessFlow.collect { level ->
-                audioPlayer.setLoudness(level)
-            }
+            preferencesManager.loudnessFlow.collect { level -> audioPlayer.setLoudness(level) }
         }
 
         // Observe Reverb
         viewModelScope.launch {
-            preferencesManager.reverbFlow.collect { preset ->
-                audioPlayer.setReverb(preset)
-            }
+            preferencesManager.reverbFlow.collect { preset -> audioPlayer.setReverb(preset) }
         }
     }
 
@@ -261,7 +319,27 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _isOffline.value = !isNetworkAvailable()
     }
 
+    /** Check for app updates */
+    private fun checkForAppUpdate() {
+        viewModelScope.launch {
+            val updateInfo = updateManager.checkForUpdate()
+            if (updateInfo != null) {
+                _appUpdateConfig.value =
+                        AppUpdateConfig(
+                                version_name = updateInfo.versionName,
+                                title = updateInfo.title,
+                                message = updateInfo.message,
+                                update_now_text = updateInfo.updateNowText,
+                                later_text = updateInfo.laterText,
+                                show_later_button = updateInfo.showLaterButton,
+                                update_link = updateInfo.updateLink
+                        )
+            }
+        }
+    }
+
     /** Setup audio player listeners */
+    /** Setup audio player listeners and resume state */
     private fun setupAudioPlayer() {
         // Song completion listener
         audioPlayer.setOnSongCompleteListener { playNext() }
@@ -269,7 +347,18 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         // Error listener
         audioPlayer.setOnErrorListener { errorMessage ->
             Log.e("MusicViewModel", "Playback error: $errorMessage")
-            // Could show error to user via UI state
+
+            // Auto-recovery for expired URLs (403 errors)
+            if (errorMessage == "ERROR_EXPIRED_URL") {
+                _currentSong.value?.let { song ->
+                    Log.d(
+                            "MusicViewModel",
+                            "🔄 Detected expired URL for ${song.title}, clearing cache and retrying..."
+                    )
+                    prefetchCache.remove(song.id) // Clear broken cache
+                    playSong(song) // Retry playback (will fetch fresh URL)
+                }
+            }
         }
 
         // Position updates are now handled internally by AudioPlayerManager
@@ -277,55 +366,210 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             audioPlayer.currentPosition.collect { position -> _currentPosition.value = position }
         }
         viewModelScope.launch {
+            audioPlayer.currentPositionMs.collect { ms -> _currentPositionMs.value = ms }
+        }
+        viewModelScope.launch {
             audioPlayer.currentSongDuration.collect { duration -> _trackDuration.value = duration }
+        }
+
+        // Sync Play/Pause state
+        viewModelScope.launch {
+            audioPlayer.isPlaying.collect { playing ->
+                _isPlaying.value = playing
+                // Update notification when state changes
+                _currentSong.value?.let { updateNotificationService(it, playing) }
+            }
+        }
+
+        // RESUME PLAYBACK FEATURE: Check duplicate/reload
+        viewModelScope.launch {
+            delay(1000) // Wait for data load
+            val lastMediaId = audioPlayer.getLastPlayedMediaId()
+            val lastPosition = audioPlayer.getLastPlayedPosition()
+
+            if (lastMediaId != null && _currentSong.value == null
+            ) { // Only resume if nothing playing
+                Log.d(
+                        "MusicViewModel",
+                        "🔄 Attempting to resume last played song: $lastMediaId at $lastPosition"
+                )
+                val song = _allMusic.value.find { it.id == lastMediaId }
+
+                if (song != null) {
+                    _currentSong.value = song
+
+                    playSong(song)
+
+                    if (lastPosition > 0) {
+                        viewModelScope.launch {
+                            // Wait for the song to start loading and player to be ready
+                            delay(1000)
+                            audioPlayer.seekTo(lastPosition)
+                        }
+                    }
+                }
+            }
         }
     }
 
     /** Load all music data and generate recommendations */
     private fun loadMusicData() {
         viewModelScope.launch {
-            var retries = 0
-            while (retries < 3) {
-                try {
-                    // Fetch everything including YouTube content
-                    val musicWithYT = MusicRepository.getAllMusicWithYouTube()
-                    if (musicWithYT.isNotEmpty()) {
-                        _allMusic.value = musicWithYT
-                        _songs.value = musicWithYT.filter { !it.isRingtone }
-                        _ringtones.value = musicWithYT.filter { it.isRingtone }
-                        
-                        // Fetch playlists
-                        _playlists.value = MusicRepository.getPlaylistsWithYouTube()
-                        
-                        ensureForYouContent()
-                        break // Success!
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
+            // 0. FIREBASE PATH: Ultra-fast load from DB
+            try {
+                val firebaseSongs = com.example.flymusicai.data.FirebaseMusicManager.getAllSongs()
+                if (firebaseSongs.isNotEmpty()) {
+                    _allMusic.value = firebaseSongs
+                    _songs.value = firebaseSongs
+                    Log.d("MusicViewModel", "🔥 Loaded ${firebaseSongs.size} songs from Firebase!")
                 }
-                retries++
-                delay(2000) // Wait before retry
+            } catch (e: Exception) {
+                Log.e("MusicViewModel", "Firebase load failed", e)
             }
-            
-            // Background load diverse content (100+ songs)
-            loadDiverseMusic()
-            
-            // Fetch specialized sections for Home like Kreate
-            fetchHomeContent()
+
+            // 1. FAST PATH: Load static content immediately (Offline/Cache first)
+            try {
+                val staticSongs =
+                        IndianMusicDatabase.forYouSongs.map { dbSong ->
+                            val durationParts = dbSong.duration.split(":")
+                            val durationSecs =
+                                    if (durationParts.size == 2) {
+                                        (durationParts[0].toIntOrNull()
+                                                ?: 0) * 60 + (durationParts[1].toIntOrNull() ?: 0)
+                                    } else 300
+
+                            val rawImageUrl = dbSong.imageUrl
+                            val finalImageUrl =
+                                    if (rawImageUrl.contains("_I8I_I7")) {
+                                        "https://c.saavncdn.com/artists/${dbSong.artist.replace(" ", "_")}_500x500.jpg"
+                                    } else rawImageUrl.replace("img.youtube.com", "i.ytimg.com")
+
+                            Music(
+                                    id =
+                                            if (dbSong.id.startsWith("yt_")) dbSong.id
+                                            else "yt_${dbSong.id}",
+                                    title = dbSong.title,
+                                    artist = dbSong.artist,
+                                    duration = durationSecs,
+                                    coverImageUrl = finalImageUrl,
+                                    audioUrl = "",
+                                    genre = dbSong.category.firstOrNull() ?: "Pop",
+                                    album = dbSong.album,
+                                    year = dbSong.year
+                            )
+                        }
+
+                _allMusic.value = staticSongs
+                _songs.value = staticSongs
+                _forYouSongs.value = staticSongs.shuffled().take(50)
+            } catch (e: Exception) {
+                Log.e("MusicViewModel", "Error loading static songs", e)
+            }
+
+            // 2. PARALLEL PATH: Launch Real Home Content Fetching (India Rising, Romance, etc.)
+            launch { fetchHomeContent() }
+
+            // 3. BACKGROUND PATH: Initial Diverse Jukebox populate
+            launch { loadDiverseMusic() }
+
+            // 4. SYNC PATH: Try to get existing library/YouTube data
+            launch {
+                var retries = 0
+                while (retries < 3) {
+                    try {
+                        val musicWithYT = MusicRepository.getAllMusicWithYouTube()
+                        if (musicWithYT.isNotEmpty()) {
+                            val combined = (_allMusic.value + musicWithYT).distinctBy { it.id }
+                            _allMusic.value = combined
+                            _songs.value = combined.filter { !it.isRingtone }
+                            _ringtones.value = combined.filter { it.isRingtone }
+                            _playlists.value = MusicRepository.getPlaylistsWithYouTube()
+                            ensureForYouContent()
+                            refreshDownloads()
+                            break
+                        }
+                    } catch (e: Exception) {
+                        Log.w("MusicViewModel", "⚠️ Library sync attempt ${retries + 1} failed")
+                    }
+                    retries++
+                    if (retries < 3) delay(1000)
+                }
+            }
+
+            // 5. EXTENDED PATH: Fetch Top Indian Singles
+            launch {
+                try {
+                    val topSingles = YouTubeMusicRepository.getTopIndianSingles()
+                    _popularSongs.value = topSingles
+                    com.example.flymusicai.data.FirebaseMusicManager.saveSongs(
+                            topSingles
+                    ) // Archive to DB
+                    val updated = (_allMusic.value + topSingles).distinctBy { it.id }
+                    _allMusic.value = updated
+                    _songs.value = updated.filter { !it.isRingtone }
+                } catch (e: Exception) {}
+            }
+
+            // 6. BHOJPURI PATH: Fetch Popular Bhojpuri
+            launch {
+                try {
+                    val bhojpuri = YouTubeMusicRepository.getPopularBhojpuri()
+                    _popularBhojpuri.value = bhojpuri
+                    com.example.flymusicai.data.FirebaseMusicManager.saveSongs(
+                            bhojpuri
+                    ) // Archive to DB
+                    val updated = (_allMusic.value + bhojpuri).distinctBy { it.id }
+                    _allMusic.value = updated
+                } catch (e: Exception) {}
+            }
         }
     }
 
-    fun updateRegionAndLanguage(languages: String, displayLanguage: String) {
-        val gl = when (displayLanguage) {
-            "Hindi" -> "IN"
-            "English" -> "US"
-            else -> "IN"
+    /** Fetch 50+ real songs for a specific artist from YouTube */
+    fun fetchArtistSongs(artistName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                Log.d("MusicViewModel", "🔍 AI SEARCH: Fetching 50+ songs for artist: $artistName")
+                // Search for "Artist Name all songs" for maximum results
+                val songs = YouTubeMusicRepository.getMusicByCategory("$artistName all songs", 100)
+
+                if (songs.isNotEmpty()) {
+                    val currentMap = _artistSongs.value.toMutableMap()
+                    currentMap[artistName] = songs
+                    _artistSongs.value = currentMap
+
+                    // Inject into global list for discovery
+                    val updated = (_allMusic.value + songs).distinctBy { it.id }
+                    _allMusic.value = updated
+                    _songs.value = updated.filter { !it.isRingtone }
+
+                    Log.d(
+                            "MusicViewModel",
+                            "✅ Populated ${songs.size} high-res tracks for $artistName"
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("MusicViewModel", "❌ Failed to fetch artist songs for $artistName", e)
+            }
         }
-        val hl = when (displayLanguage) {
-            "Hindi" -> "hi"
-            "English" -> "en"
-            else -> "hi"
-        }
+    }
+
+    fun updateRegionAndLanguage(
+            @Suppress("UNUSED_PARAMETER") languages: String,
+            displayLanguage: String
+    ) {
+        val gl =
+                when (displayLanguage) {
+                    "Hindi" -> "IN"
+                    "English" -> "US"
+                    else -> "IN"
+                }
+        val hl =
+                when (displayLanguage) {
+                    "Hindi" -> "hi"
+                    "English" -> "en"
+                    else -> "hi"
+                }
         YouTubeMusicRepository.updateRegionAndLanguage(gl, hl)
         // Refresh dynamic content when settings change
         fetchHomeContent()
@@ -333,66 +577,142 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun fetchHomeContent() {
         viewModelScope.launch(Dispatchers.IO) {
-            val rising = YouTubeMusicRepository.getIndiaRising()
-            val romance = YouTubeMusicRepository.getRomanceNow()
-            val hits90s = YouTubeMusicRepository.getBestOf90s()
-            val hitsHindi = YouTubeMusicRepository.getHindiHits()
-            val albums = YouTubeMusicRepository.getAlbumsForYou()
+            try {
+                Log.d("MusicViewModel", "🚀 Fetching home content sections in parallel...")
+                val risingDeferred = async { YouTubeMusicRepository.getIndiaRising() }
+                val romanceDeferred = async { YouTubeMusicRepository.getRomanceNow() }
+                val hits90sDeferred = async { YouTubeMusicRepository.getBestOf90s() }
+                val hitsHindiDeferred = async { YouTubeMusicRepository.getHindiHits() }
+                val bhojpuriDeferred = async { YouTubeMusicRepository.getPopularBhojpuri() }
+                val albumsDeferred = async { YouTubeMusicRepository.getAlbumsForYou() }
+                val chartsDeferred = async { YouTubeMusicRepository.getCharts() }
+                val moodsDeferred = async { YouTubeMusicRepository.getMoodsAndGenres() }
+                val youtubePlaylistsDeferred = async {
+                    YouTubeMusicRepository.getYouTubePlaylists()
+                }
 
-            _indiaRising.value = rising
-            _romanceNow.value = romance
-            _bestOf90s.value = hits90s
-            _hindiHits.value = hitsHindi
-            _albumsForYou.value = albums
+                // Await all results
+                val rising = risingDeferred.await()
+                val romance = romanceDeferred.await()
+                val hits90s = hits90sDeferred.await()
+                val hitsHindi = hitsHindiDeferred.await()
+                val bhojpuri = bhojpuriDeferred.await()
+                val albums = albumsDeferred.await()
+                val charts = chartsDeferred.await()
+                val moods = moodsDeferred.await()
+                val ytPlaylists = youtubePlaylistsDeferred.await()
 
-            // Update main playlists with these specialized ones for "View All" functionality
-            val specialPlaylists = listOf(
-                Playlist(
-                    id = "90s",
-                    name = "Best of 90s",
-                    description = "Golden era hits",
-                    coverImageUrl = hits90s.firstOrNull()?.coverImageUrl ?: "",
-                    songs = hits90s,
-                    category = PlaylistCategory.FOR_YOU
-                ),
-                Playlist(
-                    id = "hindi_hits",
-                    name = "Hindi Hits",
-                    description = "Top Bollywood",
-                    coverImageUrl = hitsHindi.firstOrNull()?.coverImageUrl ?: "",
-                    songs = hitsHindi,
-                    category = PlaylistCategory.BOLLYWOOD
-                )
-            )
-            
-            _playlists.value = YouTubeMusicRepository.getYouTubePlaylists() + specialPlaylists
+                // Update state flows immediately
+                withContext(Dispatchers.Main) {
+                    _indiaRising.value = rising
+                    _romanceNow.value = romance
+                    _bestOf90s.value = hits90s
+                    _hindiHits.value = hitsHindi
+                    _popularBhojpuri.value = bhojpuri
+                    _albumsForYou.value = albums
+                    _charts.value = charts
+                    _moods.value = moods
+                }
+
+                // SAVE TO FIREBASE for Fast Future Loading
+                launch(Dispatchers.IO) {
+                    val allFetched =
+                            (rising + romance + hits90s + hitsHindi + bhojpuri + charts)
+                                    .distinctBy { it.id }
+                    com.example.flymusicai.data.FirebaseMusicManager.saveSongs(allFetched)
+                }
+
+                // Combine into a master playlist list for "View All"
+                val specialPlaylists =
+                        listOf(
+                                Playlist(
+                                        id = "90s",
+                                        name = "Best of 90s",
+                                        description = "Golden era hits",
+                                        coverImageUrl = hits90s.firstOrNull()?.coverImageUrl ?: "",
+                                        songs = hits90s,
+                                        category = PlaylistCategory.FOR_YOU
+                                ),
+                                Playlist(
+                                        id = "hindi_hits",
+                                        name = "Hindi Hits",
+                                        description = "Top Bollywood",
+                                        coverImageUrl = hitsHindi.firstOrNull()?.coverImageUrl
+                                                        ?: "",
+                                        songs = hitsHindi,
+                                        category = PlaylistCategory.BOLLYWOOD
+                                ),
+                                Playlist(
+                                        id = "bhojpuri_hits",
+                                        name = "Bhojpuri Hits",
+                                        description = "Top Bhojpuri",
+                                        coverImageUrl = bhojpuri.firstOrNull()?.coverImageUrl ?: "",
+                                        songs = bhojpuri,
+                                        category = PlaylistCategory.BOLLYWOOD
+                                ),
+                                Playlist(
+                                        id = "india_rising",
+                                        name = "India Rising",
+                                        description = "New Voices",
+                                        coverImageUrl = rising.firstOrNull()?.coverImageUrl ?: "",
+                                        songs = rising,
+                                        category = PlaylistCategory.TRENDING
+                                ),
+                                Playlist(
+                                        id = "charts",
+                                        name = "Global Charts",
+                                        description = "Top 100",
+                                        coverImageUrl = charts.firstOrNull()?.coverImageUrl ?: "",
+                                        songs = charts,
+                                        category = PlaylistCategory.TRENDING
+                                )
+                        )
+
+                withContext(Dispatchers.Main) { _playlists.value = ytPlaylists + specialPlaylists }
+
+                // Inject into global list for discovery
+                val allNew = (rising + romance + hits90s + hitsHindi + charts).distinctBy { it.id }
+                val currentAll = _allMusic.value
+                val updated = (currentAll + allNew).distinctBy { it.id }
+
+                withContext(Dispatchers.Main) {
+                    _allMusic.value = updated
+                    _songs.value = updated.filter { !it.isRingtone }
+                }
+                Log.d("MusicViewModel", "✅ Home content populated in parallel")
+            } catch (e: Exception) {
+                Log.e("MusicViewModel", "Failed to fetch home content", e)
+            }
         }
     }
 
-    /** FlyAI: Process natural language music requests and chat */
+    /** FlyMusic AI: Process natural language music requests and chat */
     fun askAI(query: String) {
         if (query.isBlank()) return
-        
+
         viewModelScope.launch {
             _isAILoading.value = true
-            _aiResponse.value = "FlyAI is thinking..."
-            
-            // Get chat response from Gemini
-            val chatResponse = geminiService.askFlyAI(query)
+            _aiResponse.value = "FlyMusic AI is thinking..."
+
+            // Get chat response from OpenAI
+            val chatResponse = openAIService.askFlyAI(query)
             _aiResponse.value = chatResponse
-            
+
             // Parallel: Check if it's a music request to improve UX by starting playback if obvious
             val queryLower = query.lowercase()
             when {
-                queryLower.contains("play") || queryLower.contains("listen") || queryLower.contains("song") -> {
-                    val searchTerms = queryLower
-                        .replace(Regex("\\bplay\\b"), "")
-                        .replace(Regex("\\blisten to\\b"), "")
-                        .replace(Regex("\\blisten\\b"), "")
-                        .replace(Regex("\\bsongs\\b"), "")
-                        .replace(Regex("\\bsong\\b"), "")
-                        .trim()
-                    
+                queryLower.contains("play") ||
+                        queryLower.contains("listen") ||
+                        queryLower.contains("song") -> {
+                    val searchTerms =
+                            queryLower
+                                    .replace(Regex("\\bplay\\b"), "")
+                                    .replace(Regex("\\blisten to\\b"), "")
+                                    .replace(Regex("\\blisten\\b"), "")
+                                    .replace(Regex("\\bsongs\\b"), "")
+                                    .replace(Regex("\\bsong\\b"), "")
+                                    .trim()
+
                     if (searchTerms.isNotEmpty()) {
                         searchMusic(searchTerms)
                         delay(1000)
@@ -401,11 +721,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
-                queryLower.contains("happy") || queryLower.contains("energetic") || queryLower.contains("dance") -> {
+                queryLower.contains("happy") ||
+                        queryLower.contains("energetic") ||
+                        queryLower.contains("dance") -> {
                     val songs = YouTubeMusicRepository.getMusicByCategory("party dance hits", 10)
                     playSong(songs.shuffled().first(), songs)
                 }
-                queryLower.contains("study") || queryLower.contains("focus") || queryLower.contains("relax") -> {
+                queryLower.contains("study") ||
+                        queryLower.contains("focus") ||
+                        queryLower.contains("relax") -> {
                     val songs = YouTubeMusicRepository.getMusicByCategory("lofi study focus", 10)
                     playSong(songs.shuffled().first(), songs)
                 }
@@ -414,30 +738,33 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     playSong(songs.shuffled().first(), songs)
                 }
             }
-            
+
             _isAILoading.value = false
         }
     }
 
     /** Update UI colors dynamically based on the current song */
     private fun updateDynamicTheme(song: Music) {
-        val primary = when {
-            song.genre.contains("Romantic") -> Color(0xFFE91E63) // Pink
-            song.genre.contains("Party") -> Color(0xFFFF5722) // Orange
-            song.genre.contains("Bhakti") -> Color(0xFFFF9800) // Deep Orange
-            song.genre.contains("Pop") -> Color(0xFF2196F3) // Blue
-            song.genre.contains("Punjabi") -> Color(0xFFFFD600) // Vivid Yellow
-            else -> AmberGold
-        }
-        
-        _dynamicThemeColors.value = DynamicThemeColors(
-            primaryColor = primary,
-            backgroundGradient = listOf(
-                primary.copy(alpha = 0.4f),
-                Color(0xFF0A1612),
-                Color(0xFF000000)
-            )
-        )
+        val primary =
+                when {
+                    song.genre.contains("Romantic") -> Color(0xFFE91E63) // Pink
+                    song.genre.contains("Party") -> Color(0xFFFF5722) // Orange
+                    song.genre.contains("Bhakti") -> Color(0xFFFF9800) // Deep Orange
+                    song.genre.contains("Pop") -> Color(0xFF2196F3) // Blue
+                    song.genre.contains("Punjabi") -> Color(0xFFFFD600) // Vivid Yellow
+                    else -> AmberGold
+                }
+
+        _dynamicThemeColors.value =
+                DynamicThemeColors(
+                        primaryColor = primary,
+                        backgroundGradient =
+                                listOf(
+                                        primary.copy(alpha = 0.4f),
+                                        Color(0xFF0A1612),
+                                        Color(0xFF000000)
+                                )
+                )
     }
 
     /** Start/Stop a simulated visualizer for reactive UI elements */
@@ -456,29 +783,48 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun loadDiverseMusic() {
         viewModelScope.launch(Dispatchers.IO) {
-            val genres = listOf(
-                "sadabahar", "hindi", "punjabi", "bhojpuri", "haryanvi", "english", 
-                "bollywood", "romance", "party", "indie india", "devotional", 
-                "workout motivation", "lo-fi hindi", "ghazals", "sufi", "rajasthani",
-                "arijit singh hits", "shreya ghoshal special", "sidhu moose wala"
-            )
+            val genres =
+                    listOf(
+                            "sadabahar",
+                            "hindi",
+                            "punjabi",
+                            "bhojpuri",
+                            "haryanvi",
+                            "english",
+                            "bollywood",
+                            "romance",
+                            "party",
+                            "indie india",
+                            "devotional",
+                            "workout motivation",
+                            "lo-fi hindi",
+                            "ghazals",
+                            "sufi",
+                            "rajasthani",
+                            "arijit singh hits",
+                            "shreya ghoshal special",
+                            "sidhu moose wala"
+                    )
             val massiveList = mutableListOf<Music>()
-            
-            genres.forEach { genre ->
-                try {
-                    val songs = YouTubeMusicRepository.getMusicByCategory(genre, 100)
-                    massiveList.addAll(songs)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-            
+
+            val deferredGenres =
+                    genres.map { genre ->
+                        async {
+                            try {
+                                YouTubeMusicRepository.getMusicByCategory(genre, 100)
+                            } catch (e: Exception) {
+                                emptyList<Music>()
+                            }
+                        }
+                    }
+
+            massiveList.addAll(deferredGenres.flatMap { it.await() })
             if (massiveList.isNotEmpty()) {
                 val currentForYou = _forYouSongs.value.toMutableList()
                 massiveList.shuffle()
                 val merged = (currentForYou + massiveList).distinctBy { it.id }.take(1000)
                 _forYouSongs.value = merged
-                
+
                 // Update global list too
                 val all = (_allMusic.value + massiveList).distinctBy { it.id }
                 _allMusic.value = all
@@ -491,10 +837,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (_forYouSongs.value.isEmpty()) {
                 loadDiverseMusic()
-                
+
                 // Try recommendations first
                 generateRecommendations()
-                
+
                 // If still empty after a brief wait, use allMusic as fallback
                 delay(1500)
                 if (_forYouSongs.value.isEmpty()) {
@@ -514,16 +860,21 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     aiRecommender.generateRecommendedPlaylist(
                             allMusic = _allMusic.value,
                             favoriteSongs = _favoriteSongs.value,
-                            listeningHistory = _recentlyPlayed.value + _searchResults.value + _forYouSongs.value // Include for you songs to improve context
-                    )
-            
+                            listeningHistory =
+                                    _recentlyPlayed.value +
+                                            _searchResults.value +
+                                            _forYouSongs.value // Include for you songs to improve
+                            // context
+                            )
+
             // Limit to 100 songs as requested
             val enhancedSongs = recommended.songs.toMutableList()
             if (enhancedSongs.size < 100) {
                 enhancedSongs.addAll(_allMusic.value.shuffled().take(100 - enhancedSongs.size))
             }
-            
-            _recommendedPlaylist.value = recommended.copy(songs = enhancedSongs.distinctBy { it.id }.take(100))
+
+            _recommendedPlaylist.value =
+                    recommended.copy(songs = enhancedSongs.distinctBy { it.id }.take(100))
         }
     }
 
@@ -531,53 +882,82 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun playSong(song: Music, queue: List<Music> = listOf(song)) {
         viewModelScope.launch {
             Log.d("MusicViewModel", "🎵 Attempting to play: ${song.title} by ${song.artist}")
-            
+
             // Check prefetch cache first for "Instant Play"
             var audioPath = prefetchCache[song.id]
-            
+
             if (audioPath == null) {
-                audioPath = when {
-                    song.isDownloaded -> {
-                        Log.d("MusicViewModel", "✅ Playing from local download")
-                        downloadManager.getLocalFilePath(song.id) // ✅ Play offline
-                    }
-                    song.audioUrl.isNotEmpty() &&
-                            !song.audioUrl.contains("placeholder") &&
-                            !song.audioUrl.contains("cdn.example.com") -> {
-                        Log.d("MusicViewModel", "✅ Using existing audio URL")
-                        song.audioUrl // Valid stream URL
-                    }
-                    else -> {
-                        // Fetch real YouTube stream URL with retry logic
-                        Log.d("MusicViewModel", "🔄 Fetching YouTube stream URL for: ${song.id}")
-                        var retryCount = 0
-                        var streamUrl: String? = null
-                        
-                        while (retryCount < 3 && streamUrl == null) {
-                            try {
-                                streamUrl = youtubeService.getSongStreamUrl(song.id.removePrefix("yt_"))
-                                if (!streamUrl.isNullOrEmpty()) {
-                                    Log.d("MusicViewModel", "✅ Successfully fetched stream URL (Attempt ${retryCount + 1})")
-                                    break
-                                } else {
-                                    Log.w("MusicViewModel", "⚠️ Empty stream URL returned (Attempt ${retryCount + 1})")
+                audioPath =
+                        when {
+                            song.isDownloaded -> {
+                                Log.d("MusicViewModel", "✅ Playing from local download")
+                                downloadManager.getLocalFilePath(song.id) // ✅ Play offline
+                            }
+                            song.audioUrl.isNotEmpty() &&
+                                    !song.audioUrl.contains("placeholder") &&
+                                    !song.audioUrl.contains("cdn.example.com") &&
+                                    !song.audioUrl.contains("soundhelix.com") -> {
+                                Log.d("MusicViewModel", "✅ Using existing audio URL")
+                                song.audioUrl // Valid stream URL
+                            }
+                            else -> {
+                                var finalId = ensureYoutubeId(song)
+
+                                // Fetch real YouTube stream URL with retry logic
+                                Log.d("MusicViewModel", "🔄 Fetching stream for ID: $finalId")
+                                var retryCount = 0
+                                var streamUrl: String? = null
+
+                                while (retryCount < 3 && streamUrl == null) {
+                                    try {
+                                        streamUrl = youtubeService.getSongStreamUrl(finalId)
+                                        if (!streamUrl.isNullOrEmpty()) {
+                                            Log.d(
+                                                    "MusicViewModel",
+                                                    "✅ Successfully fetched stream URL (Attempt ${retryCount + 1})"
+                                            )
+                                            // Cache it for next few minutes
+                                            prefetchCache[song.id] = streamUrl
+                                            break
+                                        } else {
+                                            Log.w(
+                                                    "MusicViewModel",
+                                                    "⚠️ Empty stream URL returned (Attempt ${retryCount + 1})"
+                                            )
+                                            // If direct ID failed, maybe retry with a search once
+                                            // to be absolutely sure
+                                            if (retryCount == 0) {
+                                                Log.d(
+                                                        "MusicViewModel",
+                                                        "🔄 Retrying with force search for better ID..."
+                                                )
+                                                val forcedId =
+                                                        youtubeService.searchSong(
+                                                                song.title,
+                                                                song.artist
+                                                        )
+                                                if (forcedId != null) finalId = forcedId
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(
+                                                "MusicViewModel",
+                                                "❌ Error fetching stream (Attempt ${retryCount + 1}): ${e.message}"
+                                        )
+                                    }
+                                    retryCount++
+                                    if (retryCount < 3) delay(800)
                                 }
-                            } catch (e: Exception) {
-                                Log.e("MusicViewModel", "❌ Error fetching stream (Attempt ${retryCount + 1}): ${e.message}", e)
-                                e.printStackTrace()
-                            }
-                            retryCount++
-                            if (retryCount < 3) {
-                                delay(1000) // Wait 1 second before retry
+
+                                if (streamUrl == null) {
+                                    Log.e(
+                                            "MusicViewModel",
+                                            "❌ Failed to fetch stream URL after $retryCount attempts"
+                                    )
+                                }
+                                streamUrl
                             }
                         }
-                        
-                        if (streamUrl == null) {
-                            Log.e("MusicViewModel", "❌ Failed to fetch stream URL after $retryCount attempts")
-                        }
-                        streamUrl
-                    }
-                }
             } else {
                 Log.d("MusicViewModel", "✅ Using cached audio URL")
             }
@@ -602,7 +982,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             _currentQueue.value = queue
             _currentQueueIndex.value = queue.indexOf(song).coerceAtLeast(0)
             _currentPosition.value = 0f
-            
+
             // --- Advanced Logic: Dynamic Theme & AI Stats ---
             updateDynamicTheme(song)
 
@@ -616,44 +996,93 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 // Sync state immediately for "Instant Play" feeling
                 _isPlaying.value = true
                 Log.d("MusicViewModel", "✅ Playback started successfully!")
-                
+
                 // Update notification service
                 updateNotificationService(song, true)
-                
+
                 // Update suggestions for the player
                 updatePlayerSuggestions(song)
-                
+
                 // Fetch lyrics
                 fetchLyrics(song)
 
                 // Update "For You" recommendations based on this song
                 updateActivityRecommendations(song)
-                
+
                 // PREFETCH next 2 songs for instant switching
                 prefetchNextSongs(song, queue)
-                
+
                 // Auto-play next song when current finishes
-                audioPlayer.setOnSongCompleteListener {
-                    playNext()
-                }
+                audioPlayer.setOnSongCompleteListener { playNext() }
+
+                // GENERATE AUTO-QUEUE (Infinite Play)
+                // If queue is small or we want to ensure it's diverse, fetch related songs
+                generateAutoQueue(song)
             } catch (e: Exception) {
                 Log.e("MusicViewModel", "❌ Playback error: ${e.message}", e)
                 _isPlaying.value = false
             }
         }
     }
-    
+
+    /** Automatically populate the queue with related songs for a "never-ending" experience */
+    private fun generateAutoQueue(song: Music) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                Log.d("MusicViewModel", "🔍 Generating auto-queue for: ${song.title}")
+                val related =
+                        YouTubeMusicRepository.getRelatedMusic(
+                                song.id,
+                                song.title,
+                                song.artist,
+                                limit = 50
+                        )
+
+                if (related.isNotEmpty()) {
+                    val currentQueue = _currentQueue.value.toMutableList()
+
+                    // Filter out duplicates
+                    val newSongs =
+                            related.filter { rel ->
+                                currentQueue.none { it.id == rel.id } && rel.id != song.id
+                            }
+
+                    if (newSongs.isNotEmpty()) {
+                        currentQueue.addAll(newSongs)
+                        _currentQueue.value = currentQueue
+                        Log.d(
+                                "MusicViewModel",
+                                "✅ Auto-generated queue: added ${newSongs.size} related songs (Total: ${currentQueue.size})"
+                        )
+                    }
+
+                    // Also update player suggestions UI
+                    _playerSuggestions.value = related
+                }
+            } catch (e: Exception) {
+                Log.e("MusicViewModel", "❌ Failed to generate auto-queue", e)
+            }
+        }
+    }
+
     /** Update notification service with current song */
     private fun updateNotificationService(song: Music, isPlaying: Boolean) {
         try {
-            Log.d("MusicViewModel", "🔔 Starting notification service for: ${song.title} - Playing: $isPlaying")
-            val intent = Intent(getApplication(), com.example.flymusicai.service.MusicPlayerService::class.java)
+            Log.d(
+                    "MusicViewModel",
+                    "🔔 Starting notification service for: ${song.title} - Playing: $isPlaying"
+            )
+            val intent =
+                    Intent(
+                            getApplication(),
+                            com.example.flymusicai.service.MusicPlayerService::class.java
+                    )
             intent.putExtra("song_title", song.title)
             intent.putExtra("song_artist", song.artist)
             intent.putExtra("song_genre", song.genre)
             intent.putExtra("song_cover", song.coverImageUrl)
             intent.putExtra("is_playing", isPlaying)
-            
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 getApplication<Application>().startForegroundService(intent)
             } else {
@@ -672,29 +1101,62 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Help ensure we have a valid YouTube ID even for local database slugs */
+    private suspend fun ensureYoutubeId(song: Music): String {
+        val rawId = song.id.removePrefix("yt_")
+        val isIdValid = rawId.length == 11 && !rawId.contains("_") && !rawId.contains(" ")
+
+        if (isIdValid) return rawId
+
+        Log.d("MusicViewModel", "🔍 Resolving slug ($rawId) to real YouTube ID...")
+        return try {
+            youtubeService.searchSong(song.title, song.artist) ?: rawId
+        } catch (e: Exception) {
+            rawId
+        }
+    }
+
     private fun prefetchNextSongs(currentSong: Music, queue: List<Music>) {
         viewModelScope.launch(Dispatchers.IO) {
             val currentIndex = queue.indexOfFirst { it.id == currentSong.id }
             if (currentIndex == -1) return@launch
-            
-            // Prefetch next 2 songs
-            for (i in 1..2) {
+
+            // Prefetch next 3 songs for extra smoothness
+            for (i in 1..3) {
                 val nextIndex = (currentIndex + i) % queue.size
                 val nextSong = queue[nextIndex]
                 if (!prefetchCache.containsKey(nextSong.id) && !nextSong.isDownloaded) {
                     try {
-                        val url = youtubeService.getSongStreamUrl(nextSong.id.removePrefix("yt_"))
+                        // Ensure we use a real ID for prefetching too!
+                        val finalId = ensureYoutubeId(nextSong)
+                        val url = youtubeService.getSongStreamUrl(finalId)
                         if (url != null) {
                             prefetchCache[nextSong.id] = url
-                            Log.d("MusicViewModel", "🚀 Prefetched: ${nextSong.title}")
+                            Log.d("MusicViewModel", "🚀 Prefetched URL: ${nextSong.title}")
+
+                            // NEW: Start background caching of the actual audio data!
+                            com.example.flymusicai.player.CacheManager.prefetchSongData(
+                                    getApplication(),
+                                    url
+                            )
                         }
-                    } catch (e: Exception) { /* ignore */ }
+                    } catch (e: Exception) {
+                        /* ignore */
+                    }
+                } else if (prefetchCache.containsKey(nextSong.id)) {
+                    // Even if we already have the URL, ensure it's partially cached
+                    prefetchCache[nextSong.id]?.let { url ->
+                        com.example.flymusicai.player.CacheManager.prefetchSongData(
+                                getApplication(),
+                                url
+                        )
+                    }
                 }
             }
-            
-            // Keep cache size small
-            if (prefetchCache.size > 20) {
-                val keysToRemove = prefetchCache.keys.take(prefetchCache.size - 20)
+
+            // Keep cache size optimized
+            if (prefetchCache.size > 25) {
+                val keysToRemove = prefetchCache.keys.take(prefetchCache.size - 25)
                 keysToRemove.forEach { prefetchCache.remove(it) }
             }
         }
@@ -708,7 +1170,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         currentList.add(0, song)
         // Keep only top 20
         _recentlyPlayed.value = currentList.take(20)
-        
+
         // Save to preferences (ThemeViewModel will handle it if we expose it)
         // For simplicity here, we'll assume the caller updates ThemeViewModel or we handle it here
     }
@@ -721,7 +1183,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun updateActivityRecommendations(song: Music) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val related = YouTubeMusicRepository.getRelatedMusic(song.id)
+                val related =
+                        YouTubeMusicRepository.getRelatedMusic(song.id, song.title, song.artist)
                 if (related.isNotEmpty()) {
                     // Update the sidebar recommendation
                     _recommendedPlaylist.value =
@@ -734,12 +1197,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                                     category =
                                             com.example.flymusicai.data.PlaylistCategory.RECOMMENDED
                             )
-                    
+
                     // Add new unique related songs to "For You" without clearing current ones
                     val currentForYou = _forYouSongs.value.toMutableList()
                     val existingIds = currentForYou.map { it.id }.toSet()
                     val newSongs = related.filter { it.id !in existingIds }
-                    
+
                     if (newSongs.isNotEmpty()) {
                         // Insert new songs a few positions ahead of current or at end
                         currentForYou.addAll(newSongs)
@@ -764,8 +1227,107 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Download a song for offline playback */
+    /** Start real background download */
     fun downloadSong(music: Music) {
-        viewModelScope.launch(Dispatchers.IO) { downloadManager.downloadSong(music) }
+        viewModelScope.launch(Dispatchers.IO) {
+            // First check if already downloaded
+            try {
+                Log.d("MusicViewModel", "📥 Starting download for: ${music.title}")
+
+                // First check if already downloaded
+                if (downloadManager.isDownloaded(music.id)) {
+                    Log.d("MusicViewModel", "✅ Song already downloaded: ${music.title}")
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                                        getApplication(),
+                                        "Already downloaded: ${music.title}",
+                                        android.widget.Toast.LENGTH_SHORT
+                                )
+                                .show()
+                    }
+                    return@launch
+                }
+
+                // CRITICAL: Fetch FRESH stream URL right before download
+                // YouTube URLs expire in 3-5 seconds, so we must get a new one
+                val finalId = ensureYoutubeId(music)
+                val freshStreamUrl =
+                        try {
+                            Log.d("MusicViewModel", "🔄 Fetching fresh stream URL for download...")
+                            youtubeService.getSongStreamUrl(finalId)
+                        } catch (e: Exception) {
+                            Log.e("MusicViewModel", "❌ Failed to fetch stream URL", e)
+                            withContext(Dispatchers.Main) {
+                                android.widget.Toast.makeText(
+                                                getApplication(),
+                                                "Download failed: Cannot fetch stream URL",
+                                                android.widget.Toast.LENGTH_SHORT
+                                        )
+                                        .show()
+                            }
+                            return@launch
+                        }
+
+                if (freshStreamUrl.isNullOrEmpty()) {
+                    Log.e("MusicViewModel", "❌ Empty stream URL received")
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                                        getApplication(),
+                                        "Download failed: No stream available",
+                                        android.widget.Toast.LENGTH_SHORT
+                                )
+                                .show()
+                    }
+                    return@launch
+                }
+
+                // Create music object with fresh URL
+                val musicToDownload = music.copy(audioUrl = freshStreamUrl)
+
+                // Start download with fresh URL
+                com.example.flymusicai.player.DownloadHelper.startDownload(
+                        getApplication<Application>().applicationContext,
+                        musicToDownload
+                )
+
+                // Also save to local DownloadManager for tracking
+                downloadManager.downloadSong(musicToDownload)
+                refreshDownloads()
+
+                Log.d("MusicViewModel", "✅ Download started successfully for: ${music.title}")
+
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(
+                                    getApplication(),
+                                    "Downloading: ${music.title}",
+                                    android.widget.Toast.LENGTH_SHORT
+                            )
+                            .show()
+                }
+            } catch (e: Exception) {
+                Log.e("MusicViewModel", "❌ Download error: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(
+                                    getApplication(),
+                                    "Download failed: ${e.message}",
+                                    android.widget.Toast.LENGTH_SHORT
+                            )
+                            .show()
+                }
+            }
+        }
+    }
+
+    /** Refresh the list of downloaded songs */
+    fun refreshDownloads() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val downloaded = downloadManager.getAllDownloadedSongs()
+            _downloadedMusic.value = downloaded
+            Log.d(
+                    "MusicViewModel",
+                    "📂 Downloads refreshed: ${downloaded.size} songs from persistent storage"
+            )
+        }
     }
 
     /** Toggle play/pause */
@@ -777,21 +1339,21 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             _currentSong.value?.let { updateNotificationService(it, _isPlaying.value) }
         }
     }
-    
+
     /** Play (for broadcast receiver) */
     fun play() {
         audioPlayer.play()
         _isPlaying.value = true
         _currentSong.value?.let { updateNotificationService(it, true) }
     }
-    
+
     /** Pause (for broadcast receiver) */
     fun pause() {
         audioPlayer.pause()
         _isPlaying.value = false
         _currentSong.value?.let { updateNotificationService(it, false) }
     }
-    
+
     /** Stop (for broadcast receiver) */
     fun stop() {
         audioPlayer.stop()
@@ -799,9 +1361,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Play next song in queue with smart auto-play */
-    fun playNext() {
+    fun playNext(forceNext: Music? = null) {
         val queue = _currentQueue.value
         if (queue.isEmpty()) return
+
+        if (forceNext != null) {
+            playSong(forceNext, queue)
+            return
+        }
 
         var nextIndex = _currentQueueIndex.value + 1
 
@@ -818,14 +1385,20 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 nextIndex = 0
             } else {
                 // Smart Auto-Play: Continue with similar songs
-                Log.d("MusicViewModel", "🎵 Queue ended, starting smart auto-play with similar songs")
+                Log.d(
+                        "MusicViewModel",
+                        "🎵 Queue ended, starting smart auto-play with similar songs"
+                )
                 val currentSong = _currentSong.value
                 if (currentSong != null && _playerSuggestions.value.isNotEmpty()) {
                     // Create extended queue with suggested similar songs
                     val extendedQueue = queue + _playerSuggestions.value.take(20)
                     _currentQueue.value = extendedQueue
                     nextIndex = queue.size // Play first suggestion
-                    Log.d("MusicViewModel", "✅ Extended queue with ${_playerSuggestions.value.size} similar songs")
+                    Log.d(
+                            "MusicViewModel",
+                            "✅ Extended queue with ${_playerSuggestions.value.size} similar songs"
+                    )
                 } else {
                     // Fallback: If no suggestions available, stop playback
                     audioPlayer.stop()
@@ -842,20 +1415,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _currentSong.value = nextSong
         _currentPosition.value = 0f
 
-        // Play next song with real audio
-        audioPlayer.playSong(nextSong)
-        viewModelScope.launch {
-            delay(100)
-            _isPlaying.value = audioPlayer.isPlaying.value
-            
-            // Update notification
-            updateNotificationService(nextSong, _isPlaying.value)
-            
-            // Update suggestions for continuous playback
-            updatePlayerSuggestions(nextSong)
-        }
-        
-        Log.d("MusicViewModel", "▶️ Playing next: ${nextSong.title} (${nextIndex + 1}/${_currentQueue.value.size})")
+        // Play next song with real audio - USE VIEWMODEL.playSong to ensure YouTube IDs are
+        // resolved!
+        playSong(nextSong, updatedQueue)
+
+        Log.d(
+                "MusicViewModel",
+                "▶️ Playing next: ${nextSong.title} (${nextIndex + 1}/${_currentQueue.value.size})"
+        )
     }
 
     /** Play previous song in queue */
@@ -875,14 +1442,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _currentPosition.value = 0f
 
         // Play previous song with real audio
-        audioPlayer.playSong(prevSong)
-        viewModelScope.launch {
-            delay(100)
-            _isPlaying.value = audioPlayer.isPlaying.value
-            
-            // Update notification
-            updateNotificationService(prevSong, _isPlaying.value)
-        }
+        playSong(prevSong, queue)
     }
 
     /** Seek to position (0-1) */
@@ -959,25 +1519,26 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                             id = UUID.randomUUID().toString(),
                             name = name,
                             description = "My custom playlist",
-                            coverImageUrl = "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&q=80",
+                            coverImageUrl =
+                                    "https://c.saavncdn.com/editorial/charts_TopWeeklyHindi_139364_20231201123456_500x500.jpg",
                             songs = emptyList()
                     )
             _playlists.value = _playlists.value + newPlaylist
         }
     }
 
-    /** Add song to play next in queue */
-    fun playNext(song: Music) {
+    /** Add song to play next in queue (after current song finishes) */
+    fun addToPlayNext(song: Music) {
         val current = _currentQueue.value.toMutableList()
         val currentIndex = _currentQueueIndex.value
-        
+
         // Remove if already in queue to avoid duplicates
         current.removeAll { it.id == song.id }
-        
+
         // Insert right after current song
         val insertIndex = (currentIndex + 1).coerceAtMost(current.size)
         current.add(insertIndex, song)
-        
+
         _currentQueue.value = current
         Log.d("MusicViewModel", "⏭️ Added to Play Next: ${song.title}")
     }
@@ -992,19 +1553,41 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Start Radio based on a song */
+    /** Start Radio based on a song - Now enhanced with AI + YouTube recommendations */
     fun startRadio(song: Music) {
         viewModelScope.launch {
-            val radioSongs = aiRecommender.findSimilarSongs(song, _allMusic.value, limit = 50)
-            val fullRadioList = (listOf(song) + radioSongs).distinctBy { it.id }
+            Log.d("MusicViewModel", "📻 Starting Smart Radio for: ${song.title}")
+
+            // 1. Get local recommendations (Fast)
+            val localRadio = aiRecommender.findSimilarSongs(song, _allMusic.value, limit = 20)
+
+            // 2. Get YouTube recommendations (Premium feel, fresh content)
+            val ytRadio =
+                    try {
+                        YouTubeMusicRepository.getRelatedMusic(song.id, song.title, song.artist)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+
+            // Combine and Shuffle for variety
+            val fullRadioList =
+                    (listOf(song) + localRadio + ytRadio)
+                            .distinctBy { it.id }
+                            .shuffled()
+                            .toMutableList()
+
+            // Ensure the clicked song is always first
+            fullRadioList.remove(song)
+            fullRadioList.add(0, song)
+
             playSong(song, fullRadioList)
-            Log.d("MusicViewModel", "📻 Started Radio for: ${song.title}")
         }
     }
 
     /** Share song with FlyMusic AI branding */
     fun shareSong(context: Context, song: Music) {
-        val shareText = """
+        val shareText =
+                """
             🎵 Check out this amazing song on FlyMusic AI!
             
             ${song.title} - ${song.artist}
@@ -1013,18 +1596,20 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             
             🔗 https://music.youtube.com/watch?v=${song.id.removePrefix("yt_")}
         """.trimIndent()
-        
-        val intent = android.content.Intent().apply {
-            action = android.content.Intent.ACTION_SEND
-            putExtra(android.content.Intent.EXTRA_TEXT, shareText)
-            type = "text/plain"
-        }
+
+        val intent =
+                android.content.Intent().apply {
+                    action = android.content.Intent.ACTION_SEND
+                    putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                    type = "text/plain"
+                }
         context.startActivity(android.content.Intent.createChooser(intent, "Share via"))
     }
-    
+
     /** Share FlyMusic AI App */
     fun shareApp(context: Context) {
-        val shareText = """
+        val shareText =
+                """
             🎵 FlyMusic AI - Smart Music Streaming App
             
             ✨ Features:
@@ -1041,13 +1626,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             
             Made with ❤️ in India 🇮🇳
         """.trimIndent()
-        
-        val intent = android.content.Intent().apply {
-            action = android.content.Intent.ACTION_SEND
-            putExtra(android.content.Intent.EXTRA_TEXT, shareText)
-            putExtra(android.content.Intent.EXTRA_SUBJECT, "FlyMusic AI - Smart Music App")
-            type = "text/plain"
-        }
+
+        val intent =
+                android.content.Intent().apply {
+                    action = android.content.Intent.ACTION_SEND
+                    putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, "FlyMusic AI - Smart Music App")
+                    type = "text/plain"
+                }
         context.startActivity(android.content.Intent.createChooser(intent, "Share FlyMusic AI via"))
     }
 
@@ -1101,7 +1687,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
             // Update suggestions as user types
             updateSearchSuggestions(query)
-            
+
             // Refresh recommendations to include search context
             generateRecommendations()
         }
@@ -1132,7 +1718,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val songs = YouTubeMusicRepository.getMusicByCategory(genre, 100)
                 _genreSongs.value = songs
-                
+
                 // Also add to global list if not present
                 val currentMusic = _allMusic.value.toMutableList()
                 var modified = false
@@ -1174,20 +1760,36 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private fun fetchLyrics(song: Music) {
         viewModelScope.launch(Dispatchers.IO) {
             // Mocking lyrics for now - in production use an API like Musixmatch or YouTube captions
-            val lyrics = listOf(
-                com.example.flymusicai.ui.screens.LyricLine(0, "🎵"),
-                com.example.flymusicai.ui.screens.LyricLine(5, "Welcome to Fly Music"),
-                com.example.flymusicai.ui.screens.LyricLine(10, "Playing: ${song.title}"),
-                com.example.flymusicai.ui.screens.LyricLine(15, "By: ${song.artist}"),
-                com.example.flymusicai.ui.screens.LyricLine(20, "Enjoy the premium experience"),
-                com.example.flymusicai.ui.screens.LyricLine(25, "Dil ki baat sunlo zara"),
-                com.example.flymusicai.ui.screens.LyricLine(30, "Meri jaan ho tum yara"),
-                com.example.flymusicai.ui.screens.LyricLine(35, "Har pal har ghadi"),
-                com.example.flymusicai.ui.screens.LyricLine(40, "Tere sath hoon main khadi"),
-                com.example.flymusicai.ui.screens.LyricLine(45, "FLY MUSIC AI..."),
-                com.example.flymusicai.ui.screens.LyricLine(50, "Experience the magic"),
-                com.example.flymusicai.ui.screens.LyricLine(100, "🎵")
-            )
+            val lyrics =
+                    listOf(
+                            com.example.flymusicai.ui.screens.LyricLine(0, "🎵"),
+                            com.example.flymusicai.ui.screens.LyricLine(5, "Welcome to FlyMusic AI"),
+                            com.example.flymusicai.ui.screens.LyricLine(
+                                    10,
+                                    "Playing: ${song.title}"
+                            ),
+                            com.example.flymusicai.ui.screens.LyricLine(15, "By: ${song.artist}"),
+                            com.example.flymusicai.ui.screens.LyricLine(
+                                    20,
+                                    "Enjoy the premium experience"
+                            ),
+                            com.example.flymusicai.ui.screens.LyricLine(
+                                    25,
+                                    "Dil ki baat sunlo zara"
+                            ),
+                            com.example.flymusicai.ui.screens.LyricLine(
+                                    30,
+                                    "Meri jaan ho tum yara"
+                            ),
+                            com.example.flymusicai.ui.screens.LyricLine(35, "Har pal har ghadi"),
+                            com.example.flymusicai.ui.screens.LyricLine(
+                                    40,
+                                    "Tere sath hoon main khadi"
+                            ),
+                            com.example.flymusicai.ui.screens.LyricLine(45, "FLYMUSIC AI..."),
+                            com.example.flymusicai.ui.screens.LyricLine(50, "Experience the magic"),
+                            com.example.flymusicai.ui.screens.LyricLine(100, "🎵")
+                    )
             _currentLyrics.value = lyrics
         }
     }

@@ -72,7 +72,7 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                         ) {
                                 Image(
                                         painter = painterResource(id = R.drawable.fly_music_logo),
-                                        contentDescription = "Fly Music Logo",
+                                        contentDescription = "FlyMusic AI Logo",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Fit // Fit to show full logo with wings
                                 )
@@ -81,7 +81,7 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                         Spacer(modifier = Modifier.height(24.dp))
 
                         Text(
-                                text = "FLY MUSIC",
+                                text = "FlyMusic AI",
                                 color = AmberGold,
                                 fontSize = 42.sp,
                                 fontWeight = FontWeight.Black,

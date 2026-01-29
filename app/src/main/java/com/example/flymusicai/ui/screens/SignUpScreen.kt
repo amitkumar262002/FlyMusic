@@ -94,7 +94,7 @@ fun SignUpScreen(
                         ) {
                                 Image(
                                         painter = painterResource(id = R.drawable.fly_music_logo),
-                                        contentDescription = "Fly Music Logo",
+                                        contentDescription = "FlyMusic AI Logo",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop // Changed to Crop
                                 )
@@ -103,7 +103,7 @@ fun SignUpScreen(
                         Spacer(modifier = Modifier.height(24.dp))
 
                         Text(
-                                text = "Join Fly Music FlyAI",
+                                text = "Join FlyMusic AI",
                                 fontSize = 32.sp,
                                 fontWeight = FontWeight.Black,
                                 color = AmberGold,

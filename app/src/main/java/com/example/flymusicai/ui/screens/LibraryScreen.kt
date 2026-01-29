@@ -33,7 +33,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
+import com.example.flymusicai.R
 import com.example.flymusicai.data.Music
 import com.example.flymusicai.ui.theme.*
 import com.example.flymusicai.data.ArtistConstants
@@ -74,6 +76,7 @@ fun LibraryScreen(
     val likedSongs by musicViewModel.favoriteSongs.collectAsState()
     val allSongs by musicViewModel.allMusic.collectAsState()
     val favoriteSongs by musicViewModel.favoriteSongs.collectAsState()
+    val downloadedSongs by musicViewModel.downloadedMusic.collectAsState()
 
     // Bottom sheet state
     var selectedSongForOptions by remember { mutableStateOf<Music?>(null) }
@@ -201,7 +204,7 @@ fun LibraryScreen(
                                         LibraryMenuItem(
                                                 Icons.Default.Download,
                                                 "Downloads",
-                                                0, // Show count of downloaded songs
+                                                downloadedSongs.size, // Show count of downloaded songs
                                                 onClick = { currentSection = "Downloads" }
                                         ),
                                         LibraryMenuItem(
@@ -269,10 +272,10 @@ fun LibraryScreen(
         com.example.flymusicai.ui.components.SongOptionsBottomSheet(
             song = song,
             onDismiss = { showSongOptions = false },
-            onPlayNext = { musicViewModel.playNext(it) },
+            onPlayNext = { musicViewModel.addToPlayNext(it) },
             onAddToQueue = { musicViewModel.addToQueue(it) },
             onAddToPlaylist = { /* show playlist picker */ },
-            onDownload = { /* musicViewModel.downloadSong(it) */ },
+            onDownload = { musicViewModel.downloadSong(it) },
             onViewArtist = { /* Navigate to artist */ },
             onShare = { musicViewModel.shareSong(context, it) },
             onStartRadio = { musicViewModel.startRadio(it) },
@@ -371,6 +374,7 @@ fun SubSectionView(
     val songs by musicViewModel.songs.collectAsState()
     val playlists by musicViewModel.playlists.collectAsState()
     val likedSongs by musicViewModel.favoriteSongs.collectAsState()
+    val downloadedSongs by musicViewModel.downloadedMusic.collectAsState()
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
         when (section) {
@@ -452,58 +456,26 @@ fun SubSectionView(
                 }
             }
             "Downloads" -> {
-                // Show a "Go Pro" banner if not premium, or show downloads
-                item {
-                    Card(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                            colors =
-                                    CardDefaults.cardColors(
-                                            containerColor = AmberGold.copy(alpha = 0.1f)
-                                    ),
-                            border =
-                                    androidx.compose.foundation.BorderStroke(
-                                            1.dp,
-                                            AmberGold
-                                    )
-                    ) {
-                        Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                
+                if (downloadedSongs.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(top = 100.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(Icons.Default.WorkspacePremium, null, tint = AmberGold)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                        "Offline Mode is for Pro users!",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                        "Download songs and listen anywhere.",
-                                        color = Color.White.copy(alpha = 0.7f),
-                                        fontSize = 12.sp
-                                )
-                            }
+                            Icon(Icons.Default.DownloadDone, null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("No downloads yet.", color = TextSecondary)
+                            Text("Download songs to listen offline.", color = TextSecondary, fontSize = 12.sp)
                         }
                     }
-                }
-
-                items(songs.take(3)) { song ->
-                    Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).alpha(0.5f),
-                            verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AsyncImage(
-                                model = song.coverImageUrl,
-                                contentDescription = null,
-                                modifier = Modifier.size(50.dp).clip(RoundedCornerShape(4.dp)),
-                                contentScale = ContentScale.Crop
+                } else {
+                    items(downloadedSongs) { song ->
+                        SongItem(
+                            song = song,
+                            onClick = { onSongClick(song) },
+                            onMoreClick = { onMoreClick(song) }
                         )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(song.title, color = Color.White, fontWeight = FontWeight.Bold)
-                            Text("Offline Download Paused", color = AmberGold, fontSize = 10.sp)
-                        }
                     }
                 }
             }
@@ -554,7 +526,23 @@ fun ProfileSection(name: String, bio: String, imageUrl: String, onEditClick: () 
         Spacer(modifier = Modifier.width(16.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    color = AmberGold.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(4.dp),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, AmberGold)
+                ) {
+                    Text(
+                        "PREMIUM",
+                        color = AmberGold,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Text(bio, color = AmberGold, fontSize = 12.sp)
         }
@@ -639,107 +627,6 @@ fun GlowLibraryItem(item: LibraryMenuItem) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun centerAlignedTopBar(
-        title: @Composable () -> Unit,
-        actions: @Composable RowScope.() -> Unit,
-        colors: TopAppBarColors
-) {
-    CenterAlignedTopAppBar(title = title, actions = actions, colors = colors)
-}
-
-@Composable
-fun ProfileSection() {
-    Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Avatar Placeholder
-        Box(
-                modifier = Modifier.size(50.dp).clip(CircleShape).background(Color(0xFF333333)),
-                contentAlignment = Alignment.Center
-        ) { Icon(Icons.Default.Person, contentDescription = null, tint = Color.Gray) }
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                    "+XXXXXXXX5332",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Surface(color = Color(0xFF333333), shape = RoundedCornerShape(4.dp)) {
-                Text(
-                        "Basic",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
-        }
-
-        TextButton(onClick = { /* Edit Profile */}) {
-            Text("Edit", color = AmberGold) // Yellow/Gold
-        }
-    }
-}
-
-@Composable
-fun LibraryMenuItemRow(item: LibraryMenuItem) {
-    Row(
-            modifier =
-                    Modifier.fillMaxWidth().clickable { item.onClick() }.padding(vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-                item.icon,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
-        )
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Text(item.title, color = Color.White, fontSize = 16.sp, modifier = Modifier.weight(1f))
-
-        // Action Button (Go Pro / + New)
-        if (item.actionText != null && item.actionColor != null) {
-            Surface(color = item.actionColor, shape = RoundedCornerShape(4.dp)) {
-                Text(
-                        item.actionText,
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-
-        // Count
-        if (item.count != null && item.actionText == null) {
-            Text(item.count.toString(), color = Color.Gray, fontSize = 14.sp)
-            Spacer(modifier = Modifier.width(8.dp))
-        } else if (item.count != null) {
-            // For Playlist (0) shown after + New
-            Text(item.count.toString(), color = Color.Gray, fontSize = 14.sp)
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-
-        if (item.showArrow) {
-            Icon(
-                    Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = Color.Gray,
-                    modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
 @Composable
 fun HistoryItemRow(item: HistoryItem) {
     Row(
@@ -782,10 +669,12 @@ fun SongItem(song: Music, onClick: () -> Unit, onMoreClick: () -> Unit = {}) {
             verticalAlignment = Alignment.CenterVertically
     ) {
         AsyncImage(
-                model = song.coverImageUrl,
+                model = song.coverImageUrl.ifEmpty { "https://c.saavncdn.com/artists/${song.artist.replace(" ", "_")}_500x500.jpg" },
                 contentDescription = null,
                 modifier = Modifier.size(50.dp).clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                placeholder = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder),
+                error = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder)
         )
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {

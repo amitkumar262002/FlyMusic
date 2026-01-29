@@ -45,6 +45,7 @@ fun HomeScreen(
         onSearchClick: () -> Unit,
         onSongClick: (String) -> Unit,
         onPlaylistClick: (String) -> Unit,
+        onArtistClick: (String) -> Unit,
         onNavigateToSettings: () -> Unit
 ) {
         val context = androidx.compose.ui.platform.LocalContext.current
@@ -97,6 +98,10 @@ fun HomeScreen(
                 val bestOf90s by musicViewModel.bestOf90s.collectAsState()
                 val hindiHits by musicViewModel.hindiHits.collectAsState()
                 val albumsForYou by musicViewModel.albumsForYou.collectAsState()
+                val popularSongs by musicViewModel.popularSongs.collectAsState()
+                val playlists by musicViewModel.playlists.collectAsState()
+                val charts by musicViewModel.charts.collectAsState()
+                val moods by musicViewModel.moods.collectAsState()
                 
                 // AI Assistant State
                 val aiResponse by musicViewModel.aiResponse.collectAsState()
@@ -153,6 +158,53 @@ fun HomeScreen(
                                 )
                         }
 
+
+
+
+
+                        // 🎵 Popular Singers & Songs (Restored with Real Data)
+                        if (selectedCategory == "All") {
+                                item {
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        com.example.flymusicai.ui.components.PopularArtistsSection(
+                                                artists = com.example.flymusicai.data.IndianMusicDatabase.popularArtists,
+                                                onArtistClick = { artist ->
+                                                        onArtistClick(artist.name)
+                                                }
+                                        )
+                                }
+
+                                item {
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    val displaySongs = remember(popularSongs) {
+                                        if (popularSongs.isNotEmpty()) popularSongs else {
+                                            com.example.flymusicai.data.IndianMusicDatabase.forYouSongs.map { dbSong ->
+                                                val rawImageUrl = dbSong.imageUrl
+                                                val finalImageUrl = if (rawImageUrl.contains("_I8I_I7")) {
+                                                    "https://c.saavncdn.com/artists/${dbSong.artist.replace(" ", "_")}_500x500.jpg"
+                                                } else rawImageUrl.replace("img.youtube.com", "i.ytimg.com")
+
+                                                com.example.flymusicai.data.Music(
+                                                    id = if (dbSong.id.startsWith("yt_")) dbSong.id else "yt_${dbSong.id}",
+                                                    title = dbSong.title,
+                                                    artist = dbSong.artist,
+                                                    duration = 240, // Required parameter
+                                                    coverImageUrl = finalImageUrl,
+                                                    album = dbSong.album,
+                                                    genre = dbSong.category.firstOrNull() ?: "Bollywood"
+                                                )
+                                            }
+                                        }
+                                    }
+                                    com.example.flymusicai.ui.components.PopularSongsSection(
+                                        songs = displaySongs,
+                                        onSongClick = { song ->
+                                            musicViewModel.playSong(song, displaySongs)
+                                        }
+                                    )
+                                }
+                        }
+
                         // 3. Recently Played (Horizontal Scroll) - Only show in "All"
                         if (selectedCategory == "All" && recentlyPlayed.isNotEmpty()) {
                                 item {
@@ -175,60 +227,44 @@ fun HomeScreen(
                                 }
                         }
 
-                        // New: Top Artists / Singers Section (Match requested category)
-                        if (selectedCategory == "All" || selectedCategory == "Singers") {
-                                item {
-                                        Spacer(modifier = Modifier.height(24.dp))
-                                        SectionHeader(
-                                                topTitle = "DISCOVER TALENT",
-                                                title = "Top Singers",
-                                                titleColor = AmberGold // Updated to Yellow
-                                        )
-                                        LazyRow(
-                                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                        ) {
-                                                items(com.example.flymusicai.data.ArtistConstants.TOP_SINGERS) { artist ->
-                                                        ArtistStationItem(
-                                                                artistName = artist.name,
-                                                                imageUrl = artist.imageUrl,
-                                                                onClick = {
-                                                                        musicViewModel.searchMusic(
-                                                                                artist.name
-                                                                        )
-                                                                        onSearchClick()
-                                                                }
-                                                        )
-                                                }
-                                        }
-                                }
-                        }
 
                         // New: India Rising Section with Album Cards
                         item {
-                                Spacer(modifier = Modifier.height(24.dp))
-                                SectionHeader(
-                                        topTitle = "CELEBRATING THE REPUBLIC & ITS YOUNG VOICES",
-                                        title = "India Rising",
-                                        titleColor = AmberGold
-                                )
-                                        LazyRow(
-                                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                        ) {
-                                                // Album-style cards for Indian music collections
-                                                items(playlists.filter { 
-                                                    it.name.contains("India", ignoreCase = true) || 
-                                                    it.name.contains("Desi", ignoreCase = true) ||
-                                                    it.name.contains("Punjabi", ignoreCase = true) ||
-                                                    it.name.contains("Regional", ignoreCase = true)
-                                                }.take(10).ifEmpty { playlists.shuffled().take(10) }) { album ->
-                                                    WidePlaylistCard(
-                                                        playlist = album,
-                                                        onClick = { onPlaylistClick(album.id) }
-                                                    )
-                                                }
+                            Spacer(modifier = Modifier.height(24.dp))
+                            SectionHeader(
+                                topTitle = "CELEBRATING THE REPUBLIC & ITS YOUNG VOICES",
+                                title = "India Rising",
+                                titleColor = AmberGold
+                            )
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                // 📀 Dynamic Trending Songs (50+)
+                                items(indiaRising) { song ->
+                                    StandardSongCard(
+                                        song = song,
+                                        onClick = { musicViewModel.playSong(song, indiaRising) },
+                                        onMoreClick = {
+                                            selectedSongForOptions = song
+                                            showSongOptions = true
                                         }
+                                    )
+                                }
+                                
+                                // 📀 Album-style cards for Indian music collections
+                                items(playlists.filter {
+                                    it.name.contains("India", ignoreCase = true) ||
+                                    it.name.contains("Desi", ignoreCase = true) ||
+                                    it.name.contains("Punjabi", ignoreCase = true) ||
+                                    it.name.contains("Regional", ignoreCase = true)
+                                }.take(10)) { album ->
+                                    WidePlaylistCard(
+                                        playlist = album,
+                                        onClick = { onPlaylistClick(album.id) }
+                                    )
+                                }
+                            }
                         }
 
                         // genreSongs section (Focus when category is selected)
@@ -370,19 +406,23 @@ fun HomeScreen(
                                 }
                         }
 
-                        // 6. Top Charts (Square Cards with visuals)
-                        if (selectedCategory == "All") {
+                        // 6. Top Charts (Real Dynamic Data)
+                        if (selectedCategory == "All" && charts.isNotEmpty()) {
                                 item {
                                         Spacer(modifier = Modifier.height(24.dp))
-                                        SectionHeader(topTitle = "GLOBAL IMPACT", title = "Top Charts")
+                                        SectionHeader(topTitle = "GLOBAL IMPACT", title = "Global Charts")
                                         LazyRow(
                                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                                         ) {
-                                                items(playlists.take(50)) { playlist ->
-                                                        ChartCard(
-                                                                playlist = playlist,
-                                                                onClick = { onPlaylistClick(playlist.id) }
+                                                items(charts) { song ->
+                                                        StandardSongCard(
+                                                                song = song,
+                                                                onClick = { musicViewModel.playSong(song, charts) },
+                                                                onMoreClick = {
+                                                                    selectedSongForOptions = song
+                                                                    showSongOptions = true
+                                                                }
                                                         )
                                                 }
                                         }
@@ -562,6 +602,27 @@ fun HomeScreen(
                         }
 
                         // 10. Top Genres & Moods (Rectangular Cards with Text Overlay)
+                        if (selectedCategory == "All" && moods.isNotEmpty()) {
+                                item {
+                                        Spacer(modifier = Modifier.height(24.dp))
+                                        SectionHeader(title = "Moods & Genres")
+                                        LazyRow(
+                                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                                items(moods) { (name, colorStr) ->
+                                                        val colorLong = colorStr.toLongOrNull()
+                                                        val finalColor = if (colorLong != null) Color(colorLong) else AmberGold
+                                                        
+                                                        GenreCard(
+                                                                genre = name,
+                                                                color = finalColor,
+                                                                onClick = { selectedCategory = name; musicViewModel.fetchByGenre(name) }
+                                                        )
+                                                }
+                                        }
+                                }
+                        }
                         item {
                                 Spacer(modifier = Modifier.height(24.dp))
                                 SectionHeader(
@@ -609,7 +670,7 @@ fun HomeScreen(
                                 Spacer(modifier = Modifier.height(32.dp))
                                 ArtistSpotlightSection(
                                         artistName = "Arijit Singh",
-                                        imageUrl = "https://i.scdn.co/image/ab6761610000e5eb92d01c5ce7efb5c1bfd07a38",
+                                        imageUrl = "https://c.saavncdn.com/artists/Arijit_Singh_007_20230916071548_500x500.jpg",
                                         songs = songs.take(4), // Simulating artist songs
                                         onSongClick = onSongClick,
                                         onMoreClick = {
@@ -631,7 +692,7 @@ fun HomeScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.AutoAwesome, null, tint = AmberGold)
                                 Spacer(Modifier.width(8.dp))
-                                Text("FlyAI Assistant")
+                                Text("FlyMusic AI Assistant")
                             }
                         },
                         text = {
@@ -675,7 +736,7 @@ fun HomeScreen(
                                 if (isAILoading) {
                                     CircularProgressIndicator(modifier = Modifier.size(20.dp), color = DeepNavy)
                                 } else {
-                                    Text("Ask Fly", color = DeepNavy)
+                                    Text("Ask AI", color = DeepNavy)
                                 }
                             }
                         },
@@ -714,10 +775,10 @@ fun HomeScreen(
                     com.example.flymusicai.ui.components.SongOptionsBottomSheet(
                         song = song,
                         onDismiss = { showSongOptions = false },
-                        onPlayNext = { musicViewModel.playNext(it) },
+                        onPlayNext = { musicViewModel.addToPlayNext(it) },
                         onAddToQueue = { musicViewModel.addToQueue(it) },
                         onAddToPlaylist = { /* show playlist picker */ },
-                        onDownload = { /* musicViewModel.downloadSong(it) */ },
+                        onDownload = { musicViewModel.downloadSong(it) },
                         onViewArtist = { /* Navigate to artist */ },
                         onShare = { musicViewModel.shareSong(context, it) },
                         onStartRadio = { musicViewModel.startRadio(it) },
@@ -787,10 +848,12 @@ fun StandardSongCard(
                                         )
                 ) {
                         AsyncImage(
-                                model = song.coverImageUrl,
+                                model = song.coverImageUrl.ifEmpty { "https://c.saavncdn.com/artists/${song.artist.replace(" ", "_")}_500x500.jpg" },
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize(),
+                                placeholder = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder),
+                                error = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder)
                         )
                 }
                 Row(
@@ -847,10 +910,12 @@ fun FeaturedCard(song: com.example.flymusicai.data.Music, onClick: () -> Unit) {
         ) {
                 Box(modifier = Modifier.height(280.dp)) {
                         AsyncImage(
-                                model = song.coverImageUrl,
+                                model = song.coverImageUrl.ifEmpty { "https://c.saavncdn.com/artists/${song.artist.replace(" ", "_")}_500x500.jpg" },
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize(),
+                                placeholder = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder),
+                                error = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder)
                         )
                         // Gradient Overlay
                         Box(
@@ -1040,10 +1105,12 @@ fun WidePlaylistCard(playlist: com.example.flymusicai.data.Playlist, onClick: ()
                                 .clickable { onClick() }
         ) {
                 AsyncImage(
-                        model = playlist.coverImageUrl,
+                        model = playlist.coverImageUrl.ifEmpty { "https://c.saavncdn.com/editorial/charts_TopWeeklyHindi_139364_20231201123456_500x500.jpg" },
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        placeholder = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder),
+                        error = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder)
                 )
                 // Dark Overlay
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
@@ -1060,6 +1127,27 @@ fun WidePlaylistCard(playlist: com.example.flymusicai.data.Playlist, onClick: ()
 }
 
 @Composable
+fun GenreCard(genre: String, color: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .width(160.dp)
+            .height(100.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Brush.linearGradient(listOf(color.copy(alpha=0.8f), color)))
+            .clickable { onClick() }
+            .padding(12.dp)
+    ) {
+        Text(
+            text = genre,
+            color = Color.White,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 18.sp,
+            modifier = Modifier.align(Alignment.CenterStart)
+        )
+    }
+}
+
+@Composable
 fun GenreCard(name: String, imageUrl: String, onClick: () -> Unit) {
         Box(
                 modifier =
@@ -1069,10 +1157,12 @@ fun GenreCard(name: String, imageUrl: String, onClick: () -> Unit) {
                                 .clickable { onClick() }
         ) {
                 AsyncImage(
-                        model = imageUrl,
+                        model = imageUrl.ifEmpty { "https://c.saavncdn.com/editorial/charts_TopWeeklyHindi_139364_20231201123456_500x500.jpg" },
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        placeholder = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder),
+                        error = androidx.compose.ui.res.painterResource(id = com.example.flymusicai.R.drawable.music_placeholder)
                 )
                 // Colorful Gradient Overlay
                 Box(
@@ -1222,7 +1312,7 @@ internal fun PremiumHeader(onSearchClick: () -> Unit, onSettingsClick: () -> Uni
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                                text = "FLY MUSIC",
+                                text = "FlyMusic AI",
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -1242,7 +1332,7 @@ internal fun PremiumHeader(onSearchClick: () -> Unit, onSettingsClick: () -> Uni
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.AutoAwesome, null, tint = AmberGold, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("FlyAI", color = AmberGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("AI", color = AmberGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         
