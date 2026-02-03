@@ -47,25 +47,18 @@ private val LightColorScheme =
         )
 
 @Composable
-fun FlyMusicAITheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+fun FlyMusicAITheme(darkTheme: Boolean = true, content: @Composable () -> Unit) {
+    // Force Dark Mode always
+    val colorScheme = DarkColorScheme
     val view = LocalView.current
 
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-
-            if (darkTheme) {
-                // Dark mode - Navy status bar
-                window.statusBarColor = DeepNavy.toArgb()
-                window.navigationBarColor = DeepNavy.toArgb()
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
-            } else {
-                // Light mode - White status bar
-                window.statusBarColor = Color.White.toArgb()
-                window.navigationBarColor = Color.White.toArgb()
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
-            }
+            // Dark mode - Navy status bar
+            window.statusBarColor = DeepNavy.toArgb()
+            window.navigationBarColor = DeepNavy.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
 

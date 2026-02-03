@@ -1,8 +1,0 @@
-Fixed:
-
-- App on Android 6- failed to launch
-- App crashed in General Settings
-
-Changed:
-
-- Account Settings is now visible to Android 6+

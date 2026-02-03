@@ -4,6 +4,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,6 +35,8 @@ import com.example.flymusicai.R
 import com.example.flymusicai.ui.theme.*
 import com.example.flymusicai.viewmodel.MusicViewModel
 import kotlinx.coroutines.launch
+import com.example.flymusicai.ui.components.FlyAIDialog as AIDialog
+import com.example.flymusicai.ui.components.*
 
 /**
  * 🏠 Premium Home Screen - Advanced Professional Design Features: Glassmorphism, gradient
@@ -56,6 +59,8 @@ fun HomeScreen(
         val listState = rememberLazyListState()
         val showScrollToTop by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
         val coroutineScope = rememberCoroutineScope()
+        var selectedSongForOptions by remember { mutableStateOf<com.example.flymusicai.data.Music?>(null) }
+        var showSongOptions by remember { mutableStateOf(false) }
 
         Box(modifier = Modifier.fillMaxSize().background(DeepNavy)) {
                 // Subtle Gradient Background
@@ -66,9 +71,7 @@ fun HomeScreen(
                                                 Brush.verticalGradient(
                                                         colors =
                                                                 listOf(
-                                                                        Color(
-                                                                                0xFF16253D
-                                                                        ), // Slightly lighter navy
+                                                                        Color(0xFF16253D), // Slightly lighter navy
                                                                         DeepNavy,
                                                                         Color.Black
                                                                 )
@@ -77,18 +80,7 @@ fun HomeScreen(
                 )
 
                 var selectedCategory by remember { mutableStateOf("All") }
-                val categories =
-                        listOf(
-                                "All",
-                                "Singers",
-                                "Romance",
-                                "Top Releases",
-                                "Bollywood",
-                                "Punjabi",
-                                "Pop",
-                                "Party",
-                                "Workout"
-                        )
+                val categories = listOf("All", "Singers", "Popular Albums", "Romance", "Top Releases", "Bollywood", "Punjabi", "Pop", "Party", "Workout")
 
                 // Collect states at the top level
                 val recentlyPlayed by musicViewModel.recentlyPlayed.collectAsState()
@@ -102,17 +94,13 @@ fun HomeScreen(
                 val playlists by musicViewModel.playlists.collectAsState()
                 val charts by musicViewModel.charts.collectAsState()
                 val moods by musicViewModel.moods.collectAsState()
+                val favoriteSongs by musicViewModel.favoriteSongs.collectAsState()
                 
                 // AI Assistant State
                 val aiResponse by musicViewModel.aiResponse.collectAsState()
                 val isAILoading by musicViewModel.isAILoading.collectAsState()
                 var showAIDialog by remember { mutableStateOf(false) }
                 var aiQuery by remember { mutableStateOf("") }
-                
-                // Bottom Sheet State
-                var selectedSongForOptions by remember { mutableStateOf<com.example.flymusicai.data.Music?>(null) }
-                var showSongOptions by remember { mutableStateOf(false) }
-                val favoriteSongs by musicViewModel.favoriteSongs.collectAsState()
 
                 LazyColumn(
                         state = listState,
@@ -139,6 +127,10 @@ fun HomeScreen(
                                                         "Singers" ->
                                                                 musicViewModel.fetchByGenre(
                                                                         "Popular Artists"
+                                                                )
+                                                        "Popular Albums" ->
+                                                                musicViewModel.fetchByGenre(
+                                                                        "Albums"
                                                                 )
                                                         "Romance" ->
                                                                 musicViewModel.fetchByGenre(
@@ -168,8 +160,8 @@ fun HomeScreen(
                                         Spacer(modifier = Modifier.height(16.dp))
                                         com.example.flymusicai.ui.components.PopularArtistsSection(
                                                 artists = com.example.flymusicai.data.IndianMusicDatabase.popularArtists,
-                                                onArtistClick = { artist ->
-                                                        onArtistClick(artist.name)
+                                                onArtistClick = { artistName ->
+                                                        onArtistClick(artistName)
                                                 }
                                         )
                                 }
@@ -179,17 +171,12 @@ fun HomeScreen(
                                     val displaySongs = remember(popularSongs) {
                                         if (popularSongs.isNotEmpty()) popularSongs else {
                                             com.example.flymusicai.data.IndianMusicDatabase.forYouSongs.map { dbSong ->
-                                                val rawImageUrl = dbSong.imageUrl
-                                                val finalImageUrl = if (rawImageUrl.contains("_I8I_I7")) {
-                                                    "https://c.saavncdn.com/artists/${dbSong.artist.replace(" ", "_")}_500x500.jpg"
-                                                } else rawImageUrl.replace("img.youtube.com", "i.ytimg.com")
-
                                                 com.example.flymusicai.data.Music(
                                                     id = if (dbSong.id.startsWith("yt_")) dbSong.id else "yt_${dbSong.id}",
                                                     title = dbSong.title,
                                                     artist = dbSong.artist,
-                                                    duration = 240, // Required parameter
-                                                    coverImageUrl = finalImageUrl,
+                                                    duration = 240, 
+                                                    coverImageUrl = dbSong.imageUrl,
                                                     album = dbSong.album,
                                                     genre = dbSong.category.firstOrNull() ?: "Bollywood"
                                                 )
@@ -198,10 +185,74 @@ fun HomeScreen(
                                     }
                                     com.example.flymusicai.ui.components.PopularSongsSection(
                                         songs = displaySongs,
-                                        onSongClick = { song ->
-                                            musicViewModel.playSong(song, displaySongs)
+                                        onSongClick = { songId ->
+                                            val targetSong = displaySongs.find { it.id == songId }
+                                            if (targetSong != null) {
+                                                musicViewModel.playSong(targetSong, displaySongs)
+                                            }
+                                        },
+                                        onMoreClick = { music ->
+                                            selectedSongForOptions = music
+                                            showSongOptions = true
                                         }
                                     )
+                                }
+
+                                // 📀 Popular Albums Section
+                                item {
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    SectionHeader(
+                                        title = "Popular Albums",
+                                        titleColor = AmberGold,
+                                        onViewAllClick = { /* Navigate to albums */ }
+                                    )
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        val albums = com.example.flymusicai.data.IndianMusicDatabase.popularAlbums
+                                        items(albums) { album ->
+                                            val playlist = com.example.flymusicai.data.Playlist(
+                                                id = album.id,
+                                                name = album.name,
+                                                description = "${album.artist} • ${album.year}",
+                                                coverImageUrl = album.imageUrl,
+                                                songs = emptyList() 
+                                            )
+                                            com.example.flymusicai.ui.components.WidePlaylistCard(
+                                                playlist = playlist,
+                                                onClick = { onPlaylistClick(album.id) }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 2.5 Moods & Genres Section
+                                item {
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    SectionHeader(title = "Explore by Mood", titleColor = AmberGold)
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        val moods = listOf("Trending", "Romance", "Party", "Soulful", "90s Hits", "Retro", "Punjabi", "Tamil")
+                                        items(moods) { mood ->
+                                            Surface(
+                                                modifier = Modifier.clickable { musicViewModel.fetchByGenre(mood) },
+                                                shape = RoundedCornerShape(20.dp),
+                                                color = NavyLight,
+                                                border = BorderStroke(1.dp, AmberGold.copy(alpha = 0.3f))
+                                            ) {
+                                                Text(
+                                                    text = mood,
+                                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                                                    color = Color.White,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                         }
 
@@ -684,67 +735,9 @@ fun HomeScreen(
                 }
                 // --- AI Assist Dialog ---
                 if (showAIDialog) {
-                    AlertDialog(
-                        onDismissRequest = { showAIDialog = false },
-                        containerColor = DeepNavy,
-                        titleContentColor = AmberGold,
-                        title = { 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.AutoAwesome, null, tint = AmberGold)
-                                Spacer(Modifier.width(8.dp))
-                                Text("FlyMusic AI Assistant")
-                            }
-                        },
-                        text = {
-                            Column {
-                                Text(
-                                    "Tell me your mood or what you want to hear (e.g., 'Play something energetic')",
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    fontSize = 14.sp
-                                )
-                                Spacer(Modifier.height(16.dp))
-                                OutlinedTextField(
-                                    value = aiQuery,
-                                    onValueChange = { aiQuery = it },
-                                    placeholder = { Text("How are you feeling?", color = Color.Gray) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedTextColor = Color.White,
-                                        unfocusedTextColor = Color.White,
-                                        cursorColor = AmberGold,
-                                        focusedBorderColor = AmberGold
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                if (aiResponse.isNotEmpty()) {
-                                    Spacer(Modifier.height(12.dp))
-                                    Text(
-                                        aiResponse,
-                                        color = AmberGold,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        },
-                        confirmButton = {
-                            Button(
-                                onClick = { musicViewModel.askAI(aiQuery) },
-                                enabled = !isAILoading && aiQuery.isNotBlank(),
-                                colors = ButtonDefaults.buttonColors(containerColor = AmberGold)
-                            ) {
-                                if (isAILoading) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = DeepNavy)
-                                } else {
-                                    Text("Ask AI", color = DeepNavy)
-                                }
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showAIDialog = false }) {
-                                Text("Close", color = Color.Gray)
-                            }
-                        }
+                    AIDialog(
+                        onDismiss = { showAIDialog = false },
+                        musicViewModel = musicViewModel
                     )
                 }
 
@@ -779,7 +772,7 @@ fun HomeScreen(
                         onAddToQueue = { musicViewModel.addToQueue(it) },
                         onAddToPlaylist = { /* show playlist picker */ },
                         onDownload = { musicViewModel.downloadSong(it) },
-                        onViewArtist = { /* Navigate to artist */ },
+                        onViewArtist = { artistName -> onArtistClick(artistName) },
                         onShare = { musicViewModel.shareSong(context, it) },
                         onStartRadio = { musicViewModel.startRadio(it) },
                         onAddToLibrary = { musicViewModel.toggleFavorite(it) },
@@ -858,7 +851,7 @@ fun StandardSongCard(
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -1288,6 +1281,9 @@ fun ArtistSpotlightSection(
                                 modifier = Modifier.padding(top = 8.dp)
                         )
                 }
+
+
+
         }
 }
 
@@ -1301,7 +1297,7 @@ internal fun PremiumHeader(onSearchClick: () -> Unit, onSettingsClick: () -> Uni
                                 .padding(top = 16.dp, bottom = 8.dp, start = 16.dp, end = 16.dp)
         ) {
                 Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                 ) {
                         Image(
@@ -1329,7 +1325,7 @@ internal fun PremiumHeader(onSearchClick: () -> Unit, onSettingsClick: () -> Uni
                                 .clickable { onAIClick() }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 Icon(Icons.Default.AutoAwesome, null, tint = AmberGold, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("AI", color = AmberGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -1356,7 +1352,7 @@ internal fun PremiumHeader(onSearchClick: () -> Unit, onSettingsClick: () -> Uni
                                         .padding(horizontal = 16.dp),
                         contentAlignment = Alignment.CenterStart
                 ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
@@ -1390,7 +1386,7 @@ internal fun SectionHeader(
                                 modifier = Modifier.padding(bottom = 2.dp)
                         )
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text(
                                 text = title,
                                 fontSize = 24.sp,

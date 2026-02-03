@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.ui.res.painterResource
+import com.example.flymusicai.R
 import com.example.flymusicai.data.IndianMusicDatabase
 import com.example.flymusicai.data.Music
 import com.example.flymusicai.ui.theme.*
@@ -94,17 +96,19 @@ fun ArtistDetailScreen(
                 .padding(paddingValues),
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
-            // Header Info (Like "Border 2" artifact)
+            // Header Info
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                 ) {
                     AsyncImage(
                         model = artistImage,
                         contentDescription = artistName,
+                        placeholder = painterResource(R.drawable.music_placeholder),
+                        error = painterResource(R.drawable.music_placeholder),
                         modifier = Modifier
                             .size(160.dp)
                             .clip(RoundedCornerShape(12.dp))
@@ -133,7 +137,7 @@ fun ArtistDetailScreen(
                         
                         Spacer(modifier = Modifier.height(12.dp))
                         
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             IconButton(onClick = { /* Favorite */ }) {
                                 Icon(Icons.Default.FavoriteBorder, contentDescription = null, tint = Color.White)
                             }
@@ -182,7 +186,7 @@ fun ArtistDetailScreen(
             
             // Song List
             itemsIndexed(mergedSongs) { index, song ->
-                SongListItem(
+                ArtistSongListItem(
                     index = index + 1,
                     song = song,
                     onClick = { onSongClick(song.id, mergedSongs) },
@@ -198,7 +202,6 @@ fun ArtistDetailScreen(
     // Options Bottom Sheet
     if (showSongOptions && selectedSongForOptions != null) {
         val song = selectedSongForOptions!!
-        // Reuse existing bottom sheet component if available, using full package path to avoid import issues
         com.example.flymusicai.ui.components.SongOptionsBottomSheet(
             song = song,
             onDismiss = { showSongOptions = false },
@@ -213,5 +216,61 @@ fun ArtistDetailScreen(
             isFavorite = favoriteSongs.any { it.id == song.id },
             onToggleFavorite = { musicViewModel.toggleFavorite(it) }
         )
+    }
+}
+
+@Composable
+fun ArtistSongListItem(
+    index: Int,
+    song: Music,
+    onClick: () -> Unit,
+    onMoreClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 16.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        Text(
+            text = "$index",
+            color = Color.Gray,
+            fontSize = 14.sp,
+            modifier = Modifier.width(30.dp)
+        )
+
+        AsyncImage(
+            model = song.coverImageUrl,
+            contentDescription = null,
+            placeholder = painterResource(R.drawable.music_placeholder),
+            error = painterResource(R.drawable.music_placeholder),
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp)),
+            contentScale = ContentScale.Crop
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = song.title,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+            Text(
+                text = song.artist,
+                color = Color.Gray,
+                fontSize = 14.sp,
+                maxLines = 1
+            )
+        }
+
+        IconButton(onClick = onMoreClick) {
+            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.Gray)
+        }
     }
 }

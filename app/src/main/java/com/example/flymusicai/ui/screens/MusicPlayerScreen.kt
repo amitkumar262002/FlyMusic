@@ -42,6 +42,7 @@ import kotlin.math.abs
  * Complete Music Player Screen All-in-one player with playback controls, settings, and advanced
  * features
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun MusicPlayerScreen(
         musicViewModel: MusicViewModel,
@@ -232,7 +233,9 @@ fun MusicPlayerScreen(
                                                         CircleShape
                                                 )
                                                 .rotate(if (isPlaying) rotation else 0f),
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.Crop,
+                                placeholder = painterResource(com.example.flymusicai.R.drawable.music_placeholder),
+                                error = painterResource(com.example.flymusicai.R.drawable.music_placeholder)
                         )
 
                         // Buffering Indicator

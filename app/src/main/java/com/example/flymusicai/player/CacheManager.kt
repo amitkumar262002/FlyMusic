@@ -34,7 +34,14 @@ object CacheManager {
     fun getCacheDataSourceFactory(context: Context): DataSource.Factory {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
-            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .setUserAgent("com.google.android.youtube/19.29.35 (Linux; U; Android 14; en_US) gzip")
+            .setDefaultRequestProperties(mapOf(
+                "Referer" to "https://www.youtube.com/",
+                "X-Goog-Api-Format-Version" to "2",
+                "X-YouTube-Client-Name" to "ANDROID",
+                "X-YouTube-Client-Version" to "19.29.35",
+                "X-Android-Package" to "com.google.android.youtube"
+            ))
 
         val upstreamFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 

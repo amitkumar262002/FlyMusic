@@ -35,6 +35,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.flymusicai.data.Music
 import com.example.flymusicai.ui.theme.AmberGold
@@ -148,7 +151,12 @@ fun ForYouPageItem(
 
         var showHeartAnimation by remember { mutableStateOf(false) }
         var showLyricsOverlay by remember { mutableStateOf(false) }
-        var isLiked by remember { mutableStateOf(song.isFavorite || musicViewModel.isFavorite(song.id)) }
+        val isFavoriteFlow by musicViewModel.isFavorite(song.id).collectAsState(initial = song.isFavorite)
+        var isLiked by remember { mutableStateOf(song.isFavorite) }
+        
+        LaunchedEffect(isFavoriteFlow) {
+            isLiked = isFavoriteFlow
+        }
 
         val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -194,261 +202,265 @@ fun ForYouPageItem(
                                 )
                         }
         ) {
-                // Background
-                AsyncImage(
+            // Background
+            AsyncImage(
+                model = song.coverImageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                placeholder = painterResource(com.example.flymusicai.R.drawable.music_placeholder),
+                error = painterResource(com.example.flymusicai.R.drawable.music_placeholder)
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.4f),
+                                Color.Black.copy(alpha = 0.6f),
+                                Color.Black.copy(alpha = 0.9f)
+                            )
+                        )
+                    )
+            )
+
+            // Disc
+            Box(
+                modifier = Modifier.align(Alignment.Center),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(280.dp)
+                        .graphicsLayer {
+                            rotationZ = if (isPlaying) rotation else 0f
+                        }
+                        .clip(CircleShape)
+                        .background(Color.Black)
+                        .padding(8.dp)
+                ) {
+                    AsyncImage(
                         model = song.coverImageUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                )
-                Box(
-                        modifier =
-                                Modifier.fillMaxSize()
-                                        .background(
-                                                Brush.verticalGradient(
-                                                        colors =
-                                                                 listOf(
-                                                                        Color.Black.copy(alpha = 0.4f),
-                                                                        Color.Black.copy(alpha = 0.6f),
-                                                                        Color.Black.copy(alpha = 0.9f)
-                                                                )
-                                                )
-                                        )
-                )
-
-                // Disc
-                Box(
-                        modifier = Modifier.align(Alignment.Center),
-                        contentAlignment = Alignment.Center
-                ) {
-                        Box(
-                                modifier =
-                                        Modifier.size(280.dp)
-                                                .graphicsLayer {
-                                                        rotationZ = if (isPlaying) rotation else 0f
-                                                }
-                                                .clip(CircleShape)
-                                                .background(Color.Black)
-                                                .padding(8.dp)
-                        ) {
-                                AsyncImage(
-                                        model = song.coverImageUrl,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize().clip(CircleShape)
-                                )
-                                Box(
-                                        modifier =
-                                                Modifier.size(60.dp)
-                                                        .align(Alignment.Center)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF1A1A1A))
-                                )
-                        }
-                }
-
-                // Heart Animation
-                AnimatedVisibility(
-                        visible = showHeartAnimation,
-                        modifier = Modifier.align(Alignment.Center),
-                        enter = fadeIn() + scaleIn(),
-                        exit = fadeOut() + scaleOut()
-                ) {
-                        Icon(
-                                imageVector = Icons.Default.Favorite,
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier.size(100.dp)
-                        )
-                }
-
-                // Floating Live Lyrics (Tappable)
-                AnimatedVisibility(
-                    visible = currentLyric.isNotEmpty() && !showLyricsOverlay,
-                    enter = fadeIn() + slideInVertically(initialOffsetY = { 20 }),
-                    exit = fadeOut(),
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 120.dp)
-                        .clickable { showLyricsOverlay = true }
-                ) {
-                    Text(
-                        text = currentLyric,
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                        placeholder = painterResource(com.example.flymusicai.R.drawable.music_placeholder),
+                        error = painterResource(com.example.flymusicai.R.drawable.music_placeholder)
+                    )
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 32.dp)
-                            .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                            .padding(8.dp)
+                            .size(60.dp)
+                            .align(Alignment.Center)
+                            .clip(CircleShape)
+                            .background(Color(0xFF1A1A1A))
                     )
                 }
+            }
 
-                // Right Actions
-                Column(
+            // Heart Animation
+            AnimatedVisibility(
+                visible = showHeartAnimation,
+                modifier = Modifier.align(Alignment.Center),
+                enter = fadeIn() + scaleIn(),
+                exit = fadeOut() + scaleOut()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.8f),
+                    modifier = Modifier.size(100.dp)
+                )
+            }
+
+            // Floating Live Lyrics (Tappable)
+            AnimatedVisibility(
+                visible = currentLyric.isNotEmpty() && !showLyricsOverlay,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { 20 }),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 120.dp)
+                    .clickable { showLyricsOverlay = true }
+            ) {
+                Text(
+                    text = currentLyric,
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp)
+                        .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(8.dp)
+                )
+            }
+
+            // Right Actions
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 120.dp, end = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                ActionIcon(
+                    icon = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    label = "",
+                    tint = if (isLiked) AmberGold else Color.White,
+                    onClick = {
+                        musicViewModel.toggleFavorite(song)
+                        isLiked = !isLiked
+                        if (isLiked) showHeartAnimation = true
+                    }
+                )
+
+                // Lyrics Button
+                ActionIcon(
+                    icon = Icons.Default.Lyrics,
+                    label = "",
+                    tint = if (showLyricsOverlay) AmberGold else Color.White,
+                    onClick = { showLyricsOverlay = !showLyricsOverlay }
+                )
+
+                ActionIcon(
+                    icon = Icons.Default.PlaylistAdd,
+                    label = "",
+                    onClick = {
+                        android.widget.Toast.makeText(context, "Added to Play Queue", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                )
+
+                ActionIcon(
+                    icon = Icons.Outlined.Share,
+                    label = "",
+                    onClick = {
+                        val shareIntent = android.content.Intent().apply {
+                            action = android.content.Intent.ACTION_SEND
+                            putExtra(android.content.Intent.EXTRA_TEXT, "Check out ${song.title}!")
+                            type = "text/plain"
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share"))
+                    }
+                )
+            }
+
+                    // Bottom Info
+                    Row(
                         modifier =
-                                Modifier.align(Alignment.BottomEnd)
-                                        .padding(bottom = 120.dp, end = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                         ActionIcon(
-                                 icon = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                 label = "",
-                                 tint = if (isLiked) AmberGold else Color.White,
-                                 onClick = {
-                                         musicViewModel.toggleFavorite(song)
-                                         isLiked = !isLiked
-                                         if (isLiked) showHeartAnimation = true
-                                 }
-                         )
-                         
-                         // Lyrics Button
-                         ActionIcon(
-                                 icon = Icons.Default.Lyrics,
-                                 label = "",
-                                 tint = if (showLyricsOverlay) AmberGold else Color.White,
-                                 onClick = { showLyricsOverlay = !showLyricsOverlay }
-                         )
-
-                         ActionIcon(
-                                 icon = Icons.Default.PlaylistAdd,
-                                 label = "",
-                                 onClick = {
-                                         android.widget.Toast.makeText(context, "Added to Play Queue", android.widget.Toast.LENGTH_SHORT).show()
-                                 }
-                         )
-
-                         ActionIcon(
-                                 icon = Icons.Outlined.Share,
-                                 label = "",
-                                 onClick = {
-                                         val shareIntent = android.content.Intent().apply {
-                                                 action = android.content.Intent.ACTION_SEND
-                                                 putExtra(android.content.Intent.EXTRA_TEXT, "Check out ${song.title}!")
-                                                 type = "text/plain"
-                                         }
-                                         context.startActivity(android.content.Intent.createChooser(shareIntent, "Share"))
-                                 }
-                         )
-                }
-
-                // Bottom Info
-                Row(
-                        modifier =
-                                Modifier.align(Alignment.BottomStart)
-                                        .fillMaxWidth()
-                                        .padding(start = 16.dp, end = 16.dp, bottom = 40.dp),
+                            Modifier.align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, bottom = 40.dp),
                         verticalAlignment = Alignment.CenterVertically
-                ) {
+                    ) {
                         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                                Text(
-                                        text = song.title,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        modifier = Modifier.basicMarquee()
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                        text = song.artist,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = AmberGold.copy(alpha = 0.9f)
-                                )
+                            Text(
+                                text = song.title,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.basicMarquee()
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = song.artist,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = AmberGold.copy(alpha = 0.9f)
+                            )
                         }
 
                         IconButton(
-                                onClick = {
-                                        if (isThisSongActive) musicViewModel.togglePlayPause()
-                                        else musicViewModel.playSongById(song.id)
-                                },
-                                modifier = Modifier.size(48.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)
+                            onClick = {
+                                if (isThisSongActive) musicViewModel.togglePlayPause()
+                                else musicViewModel.playSongById(song.id)
+                            },
+                            modifier = Modifier.size(48.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)
                         ) {
-                                Icon(
-                                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(28.dp)
-                                )
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
                         }
-                }
+                    }
 
-                // Progress Bar
-                if (isThisSongActive) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth(currentProgress)
-                            .height(2.dp)
-                            .background(AmberGold)
-                    )
-                }
+                    // Progress Bar
+                    if (isThisSongActive) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth(currentProgress)
+                                .height(2.dp)
+                                .background(AmberGold)
+                        )
+                    }
 
-                // Lyrics Overlay
-                AnimatedVisibility(
-                    visible = showLyricsOverlay,
-                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.85f))
-                            .clickable { showLyricsOverlay = false }
+                    // Lyrics Overlay
+                    AnimatedVisibility(
+                        visible = showLyricsOverlay,
+                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Lyrics", color = AmberGold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                IconButton(onClick = { showLyricsOverlay = false }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                                }
-                            }
-                            
-                            if (lyrics.isEmpty() || !isThisSongActive) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Lyrics will load when the song plays", color = Color.Gray)
-                                }
-                            } else {
-                                val currentSeconds = (currentPosition * (song.duration)).toInt()
-                                val currentLyricIndex = lyrics.indexOfLast { it.timestamp <= currentSeconds }
-                                val listState = rememberLazyListState()
-                                
-                                LaunchedEffect(currentLyricIndex) {
-                                    if (currentLyricIndex >= 0) {
-                                        listState.animateScrollToItem(maxOf(0, currentLyricIndex - 2))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.85f))
+                                .clickable { showLyricsOverlay = false }
+                        ) {
+                            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Lyrics", color = AmberGold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    IconButton(onClick = { showLyricsOverlay = false }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                                     }
                                 }
 
-                                LazyColumn(
-                                    state = listState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(vertical = 100.dp),
-                                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    itemsIndexed(lyrics) { index, lyric ->
-                                        val isActive = index == currentLyricIndex
-                                        Text(
-                                            text = lyric.text,
-                                            fontSize = if (isActive) 24.sp else 18.sp,
-                                            fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold,
-                                            color = if (isActive) Color.White else Color.White.copy(alpha = 0.4f),
-                                            textAlign = TextAlign.Center,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
+                                if (lyrics.isEmpty() || !isThisSongActive) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text("Lyrics will load when the song plays", color = Color.Gray)
+                                    }
+                                } else {
+                                    val currentSeconds = (currentPosition * (song.duration)).toInt()
+                                    val currentLyricIndex = lyrics.indexOfLast { it.timestamp <= currentSeconds }
+                                    val listState = rememberLazyListState()
+
+                                    LaunchedEffect(currentLyricIndex) {
+                                        if (currentLyricIndex >= 0) {
+                                            listState.animateScrollToItem(maxOf(0, currentLyricIndex - 2))
+                                        }
+                                    }
+
+                                    LazyColumn(
+                                        state = listState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(vertical = 100.dp),
+                                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        itemsIndexed(lyrics) { index, lyric ->
+                                            val isActive = index == currentLyricIndex
+                                            Text(
+                                                text = lyric.text,
+                                                fontSize = if (isActive) 24.sp else 18.sp,
+                                                fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold,
+                                                color = if (isActive) Color.White else Color.White.copy(alpha = 0.4f),
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
         }
 }
 

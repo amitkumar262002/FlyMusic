@@ -53,6 +53,12 @@ fun PlaylistDetailScreen(
         playlists.find { it.id == playlistId } ?: albumsForYou.find { it.id == playlistId }
     }
 
+    LaunchedEffect(playlist) {
+        if (playlist != null && playlist.songs.isEmpty()) {
+            musicViewModel.fetchPlaylistSongs(playlist.id)
+        }
+    }
+
     Scaffold(
         containerColor = DeepNavy,
         topBar = {
@@ -100,7 +106,9 @@ fun PlaylistDetailScreen(
                             .size(160.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .shadow(12.dp, RoundedCornerShape(12.dp), ambientColor = AmberGold, spotColor = AmberGold),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Crop,
+                        placeholder = painterResource(R.drawable.music_placeholder),
+                        error = painterResource(R.drawable.music_placeholder)
                     )
                     
                     Spacer(modifier = Modifier.width(20.dp))
@@ -169,7 +177,7 @@ fun PlaylistDetailScreen(
             
             // Song List
             itemsIndexed(playlist.songs) { index, song ->
-                SongListItem(
+                PlaylistSongListItem(
                     index = index + 1,
                     song = song,
                     onClick = { onSongClick(song.id) },
@@ -203,7 +211,7 @@ fun PlaylistDetailScreen(
 }
 
 @Composable
-fun SongListItem(index: Int, song: Music, onClick: () -> Unit, onMoreClick: () -> Unit) {
+fun PlaylistSongListItem(index: Int, song: Music, onClick: () -> Unit, onMoreClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()

@@ -308,7 +308,6 @@ fun SettingsScreen(
                 checked = showAds,
                 onCheckedChange = { themeViewModel.toggleShowAds() }
         )
-        SettingsActionItem("Theme", subText = appTheme, onClick = { showThemeDialog = true })
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -497,34 +496,6 @@ fun SettingsScreen(
         )
     }
 
-    // --- Theme Dialog ---
-    if (showThemeDialog) {
-        val themes = listOf("System Default", "Light", "Dark")
-        AlertDialog(
-                onDismissRequest = { showThemeDialog = false },
-                title = { Text("App Theme", color = Color.White) },
-                text = {
-                    Column {
-                        themes.forEach { theme ->
-                            TextButton(
-                                    onClick = {
-                                        themeViewModel.setAppTheme(theme)
-                                        showThemeDialog = false
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                        theme,
-                                        color = if (appTheme == theme) AmberGold else Color.White
-                                )
-                            }
-                        }
-                    }
-                },
-                containerColor = NavySurface,
-                confirmButton = {}
-        )
-    }
 
     // --- Sleep Timer Dialog ---
     if (showSleepTimerDialog) {

@@ -35,6 +35,7 @@ class AudioPlayerManager private constructor(private val context: Context) {
         private const val PREFS_NAME = "playback_state"
         private const val KEY_MEDIA_ID = "last_media_id"
         private const val KEY_POSITION = "last_position_ms"
+        private const val KEY_IS_PLAYING = "last_is_playing"
         
         @Volatile
         private var instance: AudioPlayerManager? = null
@@ -318,9 +319,9 @@ class AudioPlayerManager private constructor(private val context: Context) {
     }
 
     /** Play a song from URL at specific position */
-    fun playSong(song: Music, startPositionMs: Long = 0) {
+    fun playSong(song: Music, startPositionMs: Long = 0, playImmediately: Boolean = true) {
         try {
-            Log.d(TAG, "▶️ Playing: ${song.title} by ${song.artist} starting at ${startPositionMs}ms")
+            Log.d(TAG, "▶️ [ACTION] playSong: ${song.title} (ID: ${song.id}) at ${startPositionMs}ms (Play: $playImmediately)")
             Log.d(TAG, "URL: ${song.audioUrl}")
 
             if (song.audioUrl.isEmpty()) {
@@ -357,16 +358,28 @@ class AudioPlayerManager private constructor(private val context: Context) {
             if (startPositionMs > 0) {
                 player.seekTo(startPositionMs)
                 _currentPositionMs.value = startPositionMs
+                
+                // Also update the float position if duration is known (compatibility)
+                if (song.duration > 0) {
+                    _currentPosition.value = (startPositionMs.toFloat() / (song.duration * 1000).toFloat()).coerceIn(0f, 1f)
+                }
             }
 
-            // Prepare and play with Fade-In
+            // Prepare
             player.prepare()
-            player.volume = 0f
-            player.playWhenReady = true
-            fadeIn()
-
-            // Update state immediately
-            _isPlaying.value = true
+            
+            if (playImmediately) {
+                player.volume = 0f
+                player.playWhenReady = true
+                fadeIn()
+                _isPlaying.value = true
+                Log.d(TAG, "✅ Song starting with fade-in")
+            } else {
+                player.playWhenReady = false
+                player.volume = 1f
+                _isPlaying.value = false
+                Log.d(TAG, "✅ Song loaded and PAUSED for resume")
+            }
 
             // Re-sync audio session ID and effects for the new track
             val newSessionId = player.audioSessionId
@@ -374,8 +387,6 @@ class AudioPlayerManager private constructor(private val context: Context) {
                 _audioSessionId.value = newSessionId
                 setupAudioEffects()
             }
-
-            Log.d(TAG, "✅ Song prepared and starting playback with fade-in")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error playing song: ${song.title}", e)
             e.printStackTrace()
@@ -674,10 +685,12 @@ class AudioPlayerManager private constructor(private val context: Context) {
         if (player.currentMediaItem != null) {
             val mediaId = player.currentMediaItem?.mediaId
             val position = player.currentPosition
+            val isPlaying = player.isPlaying
             if (mediaId != null) {
                 prefs.edit()
                     .putString(KEY_MEDIA_ID, mediaId)
                     .putLong(KEY_POSITION, position)
+                    .putBoolean(KEY_IS_PLAYING, isPlaying)
                     .apply()
             }
         }
@@ -686,6 +699,8 @@ class AudioPlayerManager private constructor(private val context: Context) {
     fun getLastPlayedMediaId(): String? = prefs.getString(KEY_MEDIA_ID, null)
     
     fun getLastPlayedPosition(): Long = prefs.getLong(KEY_POSITION, 0L)
+    
+    fun wasPlayingLast(): Boolean = prefs.getBoolean(KEY_IS_PLAYING, false)
 
     /** Get the media ID of the song currently loaded in the player */
     fun getCurrentMediaId(): String? = player.currentMediaItem?.mediaId

@@ -26,8 +26,8 @@ class ThemeViewModel(application: Application) : AndroidViewModel(application) {
     private val _notificationsEnabled = MutableStateFlow(true)
     val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
 
-    // 🌗 Advanced Theme State
-    private val _effectiveDarkMode = MutableStateFlow(false)
+    // 🌗 Advanced Theme State - Forced to Dark
+    private val _effectiveDarkMode = MutableStateFlow(true)
     val effectiveDarkMode: StateFlow<Boolean> = _effectiveDarkMode.asStateFlow()
 
     // ========== New Advanced States ==========
@@ -267,14 +267,7 @@ class ThemeViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Update actual dark mode state based on selection and system */
     private fun updateEffectiveDarkMode() {
-        val systemDark = false // This is tricky in ViewModel, usually passed from UI
-        _effectiveDarkMode.value =
-                when (_appTheme.value) {
-                    "Dark" -> true
-                    "Light" -> false
-                    else -> _isDarkMode.value // System Default uses DataStore value which is synced
-                // from UI
-                }
+        _effectiveDarkMode.value = true
     }
 
     /** Sync system dark mode status from UI */

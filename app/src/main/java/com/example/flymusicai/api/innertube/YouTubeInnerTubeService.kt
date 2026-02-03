@@ -2,707 +2,360 @@ package com.example.flymusicai.api.innertube
 
 import android.util.Log
 import com.example.flymusicai.api.MusicStreamingService
+import com.example.flymusicai.api.SaavnService
 import com.example.flymusicai.api.SongDetails
 import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.engine.okhttp.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
 class YouTubeInnerTubeService : MusicStreamingService {
 
-        private val httpClient =
-                HttpClient(OkHttp) {
-                        engine {
-                                config {
-                                        connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                                        readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                                        writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                                }
-                        }
-                        install(ContentNegotiation) {
-                                json(
-                                        Json {
-                                                ignoreUnknownKeys = true
-                                                explicitNulls = false
-                                        }
-                                )
-                        }
-                }
-
-        private val json = Json {
-                ignoreUnknownKeys = true
+    private val saavnService = SaavnService()
+    private val httpClient = HttpClient {
+        install(ContentNegotiation) {
+            json(Json { 
+                ignoreUnknownKeys = true 
                 explicitNulls = false
+            })
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 20000
+        }
+    }
+
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private var gl = "IN"
+    private var hl = "hi"
+
+    fun setRegionAndLanguage(gl: String, hl: String) {
+        this.gl = gl
+        this.hl = hl
+    }
+
+    override suspend fun searchSong(title: String, artist: String): String? {
+        val query = "$title $artist"
+        return searchVideos(query).firstOrNull()?.id
+    }
+
+    suspend fun searchVideos(query: String): List<SongDetails> = withContext(Dispatchers.IO) {
+        try {
+            val client = YouTubeClients.WEB_REMIX
+            val response: String = httpClient.post("https://music.youtube.com/youtubei/v1/search") {
+                parameter("key", client.apiKey)
+                contentType(ContentType.Application.Json)
+                header("User-Agent", client.userAgent)
+                header("X-YouTube-Client-Name", client.clientName)
+                header("X-YouTube-Client-Version", client.clientVersion)
+                setBody(SearchBody(
+                    context = client.toInnerTubeContext(gl = gl, hl = hl),
+                    query = query,
+                    params = "EgWKAQIIAWoREAMQBBAJEAoQDRAEEAoQBA%3D%3D" // Filter for songs
+                ))
+            }.body()
+
+            val root = json.parseToJsonElement(response).jsonObject
+            val songs = mutableListOf<SongDetails>()
+            findSongs(root, songs)
+            songs
+        } catch (e: Exception) {
+            Log.e("InnerTubeService", "Search failed for: $query", e)
+            emptyList()
+        }
+    }
+
+    override suspend fun getSongStreamUrl(songId: String): String? = withContext(Dispatchers.IO) {
+        val videoId = songId.removePrefix("yt_")
+        Log.d("InnerTubeService", "📡 Resolving stream for: $videoId")
+
+        // Priority List: ANDROID -> IOS -> WEB_REMIX -> TVHTML5
+        val clients = listOf(
+            YouTubeClients.ANDROID,
+            YouTubeClients.IOS,
+            YouTubeClients.WEB_REMIX,
+            YouTubeClients.TVHTML5
+        )
+
+        for (client in clients) {
+            try {
+                val url = fetchStreamUrl(client, videoId)
+                if (!url.isNullOrEmpty()) {
+                    Log.d("InnerTubeService", "✅ Success: [${client.clientName}]")
+                    return@withContext url
+                }
+            } catch (e: Exception) {
+                Log.w("InnerTubeService", "⚠️ [${client.clientName}] failed: ${e.message}")
+            }
         }
 
-        private var gl: String = "IN"
-        private var hl: String = "hi"
+        // Fallback to Piped (Try multiple instances)
+        val pipedInstances = listOf(
+            "https://pipedapi.kavin.rocks",
+            "https://api.piped.private.coffee",
+            "https://pipedapi.drgns.space"
+        )
 
-        fun setRegionAndLanguage(newGl: String, newHl: String) {
-                gl = newGl
-                hl = newHl
+        for (instance in pipedInstances) {
+            try {
+                Log.d("InnerTubeService", "📡 Trying Piped API Fallback ($instance)...")
+                val url = fetchFromPiped(instance, videoId)
+                if (!url.isNullOrEmpty()) return@withContext url
+            } catch (e: Exception) {
+                Log.w("InnerTubeService", "❌ Piped instance failed: $instance")
+            }
         }
 
-        private fun YouTubeClientConfig.toDynamicInnerTubeContext(): InnerTubeContext {
-                return InnerTubeContext(
-                        InnerTubeContext.Client(
-                                clientName = clientName,
-                                clientVersion = clientVersion,
-                                gl = gl,
-                                hl = hl
-                        )
+        // LAST RESORT: Try Saavn if it's a known song
+        try {
+            Log.d("InnerTubeService", "📡 Trying Saavn Fallback as last resort...")
+            val metadata = getSongMetadata(videoId)
+            if (metadata != null) {
+                val searchStr = "${metadata.first} ${metadata.second}"
+                val saavnResults = saavnService.searchSongs(searchStr)
+                val firstMatch = saavnResults.firstOrNull()
+                if (firstMatch != null) {
+                    val sUrl = saavnService.getStreamUrl(firstMatch.id)
+                    if (sUrl != null) {
+                        Log.d("InnerTubeService", "✅ Success: [Saavn Fallback]")
+                        return@withContext sUrl
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("InnerTubeService", "❌ Saavn fallback failed", e)
+        }
+
+        Log.e("InnerTubeService", "💀 CRITICAL: All extraction methods failed for $videoId")
+        null
+    }
+
+    private suspend fun getSongMetadata(videoId: String): Pair<String, String>? {
+        return try {
+            val client = YouTubeClients.WEB_REMIX
+            val response: String = httpClient.post("https://music.youtube.com/youtubei/v1/player") {
+                parameter("key", client.apiKey)
+                setBody(PlayerBody(
+                    context = client.toInnerTubeContext(gl = gl, hl = hl),
+                    videoId = videoId
+                ))
+            }.body()
+            val root = json.parseToJsonElement(response).jsonObject
+            val details = root["videoDetails"]?.jsonObject
+            val title = details?.get("title")?.jsonPrimitive?.content ?: ""
+            val artist = details?.get("author")?.jsonPrimitive?.content ?: ""
+            if (title.isNotEmpty()) title to artist else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun fetchStreamUrl(client: YouTubeClientConfig, videoId: String): String? {
+        val responseText: String = httpClient.post("https://www.youtube.com/youtubei/v1/player") {
+            parameter("key", client.apiKey)
+            contentType(ContentType.Application.Json)
+            header("User-Agent", client.userAgent)
+            header("X-YouTube-Client-Name", client.clientName)
+            header("X-YouTube-Client-Version", client.clientVersion)
+            header("X-Goog-Api-Format-Version", "2")
+            header("Origin", "https://music.youtube.com")
+            header("Referer", "https://music.youtube.com/")
+            
+            setBody(PlayerBody(
+                context = client.toInnerTubeContext(videoId, gl = gl, hl = hl),
+                videoId = videoId,
+                playbackContext = PlaybackContext(
+                    contentPlaybackContext = ContentPlaybackContext(signatureTimestamp = 20836) // Updated timestamp
                 )
+            ))
+        }.body()
+
+        val root = json.parseToJsonElement(responseText).jsonObject
+        val status = root["playabilityStatus"]?.jsonObject?.get("status")?.jsonPrimitive?.content
+        
+        if (status != "OK") {
+            val reason = root["playabilityStatus"]?.jsonObject?.get("reason")?.jsonPrimitive?.content
+            Log.w("InnerTubeService", "Status: $status, Reason: $reason")
+            return null
         }
 
-        init {
-                try {
-                        org.schabi.newpipe.extractor.NewPipe.init(
-                                com.example.flymusicai.api.NewPipeDownloader.getInstance()
-                        )
-                } catch (e: Exception) {
-                        // Already initialized
-                }
-        }
+        val streamingData = root["streamingData"]?.jsonObject ?: return null
+        val formats = mutableListOf<JsonObject>()
+        streamingData["adaptiveFormats"]?.jsonArray?.forEach { formats.add(it.jsonObject) }
+        streamingData["formats"]?.jsonArray?.forEach { formats.add(it.jsonObject) }
 
-        override suspend fun searchSong(title: String, artist: String): String? {
-                val query = "$title $artist"
-                return searchVideos(query).firstOrNull()?.id
-        }
+        val bestAudioFormat = formats
+            .filter { it["mimeType"]?.jsonPrimitive?.content?.contains("audio") == true }
+            .maxByOrNull { it["bitrate"]?.jsonPrimitive?.intOrNull ?: 0 }
 
-        suspend fun searchVideos(query: String): List<SongDetails> =
-                withContext(Dispatchers.IO) {
-                        try {
-                                val client = YouTubeClients.WEB_REMIX
-                                val response: String =
-                                        httpClient
-                                                .post(
-                                                        "https://music.youtube.com/youtubei/v1/search"
-                                                ) {
-                                                        parameter("key", client.apiKey)
-                                                        contentType(ContentType.Application.Json)
-                                                        header("User-Agent", client.userAgent)
-                                                        header(
-                                                                "X-YouTube-Client-Name",
-                                                                client.clientName
-                                                        )
-                                                        header(
-                                                                "X-YouTube-Client-Version",
-                                                                client.clientVersion
-                                                        )
-                                                        header(
-                                                                "Referer",
-                                                                "https://music.youtube.com/"
-                                                        )
-                                                        setBody(
-                                                                SearchBody(
-                                                                        context =
-                                                                                client.toDynamicInnerTubeContext(),
-                                                                        query = query,
-                                                                        params =
-                                                                                "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D" // Filter for songs
-                                                                )
-                                                        )
-                                                }
-                                                .body()
+        var url = bestAudioFormat?.get("url")?.jsonPrimitive?.content
 
-                                val root = json.parseToJsonElement(response).jsonObject
-                                val contents =
-                                        root["contents"]
-                                                ?.jsonObject
-                                                ?.get("tabbedSearchResultsRenderer")
-                                                ?.jsonObject
-                                                ?.get("tabs")
-                                                ?.jsonArray
-                                                ?.get(0)
-                                                ?.jsonObject
-                                                ?.get("tabRenderer")
-                                                ?.jsonObject
-                                                ?.get("content")
-                                                ?.jsonObject
-                                                ?.get("sectionListRenderer")
-                                                ?.jsonObject
-                                                ?.get("contents")
-                                                ?.jsonArray
-
-                                val songs = mutableListOf<SongDetails>()
-
-                                contents?.forEach { section ->
-                                        val shelf =
-                                                section.jsonObject["musicShelfRenderer"]?.jsonObject
-                                        shelf?.get("contents")?.jsonArray?.forEach { item ->
-                                                val renderer =
-                                                        item.jsonObject[
-                                                                        "musicResponsiveListItemRenderer"]
-                                                                ?.jsonObject
-                                                if (renderer != null) {
-                                                        val videoId =
-                                                                renderer["playlistItemData"]
-                                                                        ?.jsonObject?.get("videoId")
-                                                                        ?.jsonPrimitive
-                                                                        ?.content
-                                                                        ?: renderer[
-                                                                                        "navigationEndpoint"]
-                                                                                ?.jsonObject
-                                                                                ?.get(
-                                                                                        "watchEndpoint"
-                                                                                )
-                                                                                ?.jsonObject
-                                                                                ?.get("videoId")
-                                                                                ?.jsonPrimitive
-                                                                                ?.content
-
-                                                        if (videoId != null) {
-                                                                val title =
-                                                                        renderer["flexColumns"]
-                                                                                ?.jsonArray
-                                                                                ?.get(0)
-                                                                                ?.jsonObject
-                                                                                ?.get(
-                                                                                        "musicResponsiveListItemFlexColumnRenderer"
-                                                                                )
-                                                                                ?.jsonObject
-                                                                                ?.get("text")
-                                                                                ?.jsonObject
-                                                                                ?.get("runs")
-                                                                                ?.jsonArray
-                                                                                ?.get(0)
-                                                                                ?.jsonObject
-                                                                                ?.get("text")
-                                                                                ?.jsonPrimitive
-                                                                                ?.content
-                                                                                ?: "Unknown"
-
-                                                                val artist =
-                                                                        renderer["flexColumns"]
-                                                                                ?.jsonArray
-                                                                                ?.get(1)
-                                                                                ?.jsonObject
-                                                                                ?.get(
-                                                                                        "musicResponsiveListItemFlexColumnRenderer"
-                                                                                )
-                                                                                ?.jsonObject
-                                                                                ?.get("text")
-                                                                                ?.jsonObject
-                                                                                ?.get("runs")
-                                                                                ?.jsonArray
-                                                                                ?.get(0)
-                                                                                ?.jsonObject
-                                                                                ?.get("text")
-                                                                                ?.jsonPrimitive
-                                                                                ?.content
-                                                                                ?: "Unknown"
-
-                                                                val thumbnails =
-                                                                        renderer["thumbnail"]
-                                                                                ?.jsonObject
-                                                                                ?.get(
-                                                                                        "musicThumbnailRenderer"
-                                                                                )
-                                                                                ?.jsonObject
-                                                                                ?.get("thumbnail")
-                                                                                ?.jsonObject
-                                                                                ?.get("thumbnails")
-                                                                                ?.jsonArray
-                                                                val thumbUrl =
-                                                                        thumbnails
-                                                                                ?.map { it.jsonObject }
-                                                                                ?.maxByOrNull {
-                                                                                        it["width"]?.jsonPrimitive?.intOrNull ?: 0
-                                                                                }
-                                                                                ?.get("url")
-                                                                                ?.jsonPrimitive
-                                                                                ?.content
-                                                                                ?: ""
-
-                                                                songs.add(
-                                                                        SongDetails(
-                                                                                id = videoId,
-                                                                                title = title,
-                                                                                artist = artist,
-                                                                                duration = 0,
-                                                                                coverImageUrl =
-                                                                                        thumbUrl,
-                                                                                streamUrl =
-                                                                                        "" // To be
-                                                                                // fetched later
-                                                                                )
-                                                                )
-                                                        }
-                                                }
-                                        }
-                                }
-                                songs
-                        } catch (e: Exception) {
-                                Log.e("InnerTubeService", "Search failed", e)
-                                emptyList()
-                        }
-                }
-
-        override suspend fun getSongStreamUrl(songId: String): String? {
-                return withContext(Dispatchers.IO) {
-                        val videoId = songId.removePrefix("yt_")
-
-                        // 1. Try InnerTube ANDROID_VR FIRST (Very Robust for non-logged in)
-                        try {
-                            Log.d("InnerTubeService", "Attempting fast-path: ANDROID_VR for $videoId")
-                            val url = fetchStreamUrl(YouTubeClients.ANDROID_VR, videoId)
-                            if (!url.isNullOrEmpty()) {
-                                Log.d("InnerTubeService", "✅ Stream URL obtained via ANDROID_VR (Fast Path)")
-                                return@withContext url
-                            }
-                        } catch (e: Exception) {
-                            Log.w("InnerTubeService", "ANDROID_VR failed: ${e.message}")
-                        }
-
-                        // 2. Try InnerTube ANDROID_TESTSUITE (Secondary Fast Path)
-                        try {
-                            Log.d("InnerTubeService", "Attempting fast-path: ANDROID_TESTSUITE for $videoId")
-                            val url = fetchStreamUrl(YouTubeClients.ANDROID_TESTSUITE, videoId)
-                            if (!url.isNullOrEmpty()) {
-                                Log.d("InnerTubeService", "✅ Stream URL obtained via ANDROID_TESTSUITE")
-                                return@withContext url
-                            }
-                        } catch (e: Exception) {
-                            Log.w("InnerTubeService", "ANDROID_TESTSUITE failed: ${e.message}")
-                        }
-
-                        // 2. Try NewPipe Extractor (Highly Reliable, handles signatures)
-                        try {
-                                Log.d(
-                                        "InnerTubeService",
-                                        "Attempting NewPipe extractor for $videoId"
-                                )
-                                val service = org.schabi.newpipe.extractor.ServiceList.YouTube
-                                val contentUrl = "https://www.youtube.com/watch?v=$videoId"
-                                val streamInfo =
-                                        org.schabi.newpipe.extractor.stream.StreamInfo.getInfo(
-                                                service,
-                                                contentUrl
-                                        )
-                                val url =
-                                        streamInfo.audioStreams.maxByOrNull { it.bitrate }?.content
-                                if (!url.isNullOrEmpty()) {
-                                        Log.d(
-                                                "InnerTubeService",
-                                                "✅ Stream URL obtained via NewPipe"
-                                        )
-                                        return@withContext url
-                                }
-                        } catch (e: Exception) {
-                                Log.w(
-                                        "InnerTubeService",
-                                        "NewPipe extraction failed, trying other InnerTube fallbacks: ${e.message}"
-                                )
-                        }
-
-                        // 3. Try other InnerTube Clients as fallback
-                        val clients =
-                                listOf(
-                                        YouTubeClients.ANDROID_MUSIC,
-                                        YouTubeClients.ANDROID,
-                                        YouTubeClients.WEB,
-                                        YouTubeClients.MWEB,
-                                        YouTubeClients.TVHTML5
-                                )
-
-                        for (client in clients) {
-                                Log.d(
-                                        "InnerTubeService",
-                                        "Trying InnerTube client: ${client.clientName}"
-                                )
-                                val url = fetchStreamUrl(client, videoId)
-                                if (!url.isNullOrEmpty()) {
-                                        Log.d(
-                                                "InnerTubeService",
-                                                "✅ Stream URL obtained via ${client.clientName}"
-                                        )
-                                        return@withContext url
-                                }
-                        }
-
-                        Log.e("InnerTubeService", "❌ All extraction methods failed for $videoId")
-                        null
-                }
-        }
-
-        private suspend fun fetchStreamUrl(client: YouTubeClientConfig, videoId: String): String? {
-                return try {
-                        val response: String =
-                                httpClient
-                                        .post("https://www.youtube.com/youtubei/v1/player") {
-                                                parameter("key", client.apiKey)
-                                                contentType(ContentType.Application.Json)
-                                                header("User-Agent", client.userAgent)
-                                                header("X-YouTube-Client-Name", client.clientName)
-                                                header(
-                                                        "X-YouTube-Client-Version",
-                                                        client.clientVersion
-                                                )
-                                                header("Referer", "https://music.youtube.com/")
-                                                setBody(
-                                                        PlayerBody(
-                                                                context =
-                                                                        client.toDynamicInnerTubeContext(),
-                                                                videoId = videoId,
-                                                                playbackContext =
-                                                                        PlaybackContext(
-                                                                                contentPlaybackContext =
-                                                                                        ContentPlaybackContext(
-                                                                                                signatureTimestamp =
-                                                                                                        20241
-                                                                                        )
-                                                                        )
-                                                        )
-                                                )
-                                        }
-                                        .body()
-
-                        val root = json.parseToJsonElement(response).jsonObject
-
-                        // Log playability status if streaming data is missing
-                        if (!root.contains("streamingData")) {
-                                val status = root["playabilityStatus"]?.jsonObject
-                                val statusText = status?.get("status")?.jsonPrimitive?.content
-                                val reason = status?.get("reason")?.jsonPrimitive?.content
-                                Log.w(
-                                        "InnerTubeService",
-                                        "Client ${client.clientName} failed for $videoId. Status: $statusText, Reason: $reason"
-                                )
-                        }
-
-                        val streamingData = root["streamingData"]?.jsonObject
-                        val adaptiveFormats = streamingData?.get("adaptiveFormats")?.jsonArray
-
-                        // Prefer audio/mp4 or audio/webm
-                        val bestFormat =
-                                adaptiveFormats
-                                        ?.map { it.jsonObject }
-                                        ?.filter {
-                                                val mime =
-                                                        it["mimeType"]?.jsonPrimitive?.content ?: ""
-                                                mime.contains("audio")
-                                        }
-                                        ?.maxByOrNull { it["bitrate"]?.jsonPrimitive?.int ?: 0 }
-
-                        val url = bestFormat?.get("url")?.jsonPrimitive?.content
-                        if (url != null) {
-                                Log.d(
-                                        "InnerTubeService",
-                                        "✅ Stream URL obtained from ${client.clientName}: ${url.take(50)}..."
-                                )
-                        }
-                        url
-                } catch (e: Exception) {
-                        Log.e("InnerTubeService", "Fetch failed for ${client.clientName}", e)
-                        null
-                }
-        }
-
-        /** Get related songs for a given video ID */
-        suspend fun getRelatedSongs(videoId: String): List<SongDetails> =
-                withContext(Dispatchers.IO) {
-                        try {
-                                val client = YouTubeClients.WEB_REMIX
-                                val id = videoId.removePrefix("yt_")
-
-                                Log.d("InnerTubeService", "📡 Fetching related songs for: $id")
-
-                                val response: String =
-                                        httpClient
-                                                .post("https://music.youtube.com/youtubei/v1/next") {
-                                                        parameter("key", client.apiKey)
-                                                        contentType(ContentType.Application.Json)
-                                                        header("User-Agent", client.userAgent)
-                                                        header("X-YouTube-Client-Name", client.clientName)
-                                                        header("X-YouTube-Client-Version", client.clientVersion)
-                                                        setBody(
-                                                                PlayerBody(
-                                                                        context = client.toDynamicInnerTubeContext(),
-                                                                        videoId = id
-                                                                )
-                                                        )
-                                                }
-                                                .body()
-
-                                val root = json.parseToJsonElement(response)
-                                val songs = mutableListOf<SongDetails>()
-                                
-                                // Recursive search for musicResponsiveListItemRenderer
-                                fun findSongs(element: JsonElement) {
-                                    when (element) {
-                                        is JsonObject -> {
-                                            val renderer = element["musicResponsiveListItemRenderer"]?.jsonObject
-                                            if (renderer != null) {
-                                                parseSongRenderer(renderer)?.let { songs.add(it) }
-                                            } else {
-                                                element.values.forEach { findSongs(it) }
-                                            }
-                                        }
-                                        is JsonArray -> {
-                                            element.forEach { findSongs(it) }
-                                        }
-                                        else -> {}
-                                    }
-                                }
-
-                                findSongs(root)
-                                
-                                Log.d("InnerTubeService", "✅ Found ${songs.size} related songs")
-                                songs.distinctBy { it.id }.filter { it.id != id }
-                        } catch (e: Exception) {
-                                Log.e("InnerTubeService", "Failed to get related songs", e)
-                                emptyList()
-                        }
-                }
-
-        private fun parseSongRenderer(renderer: JsonObject): SongDetails? {
-            try {
-                val videoId = renderer["playlistItemData"]?.jsonObject?.get("videoId")?.jsonPrimitive?.content
-                    ?: renderer["navigationEndpoint"]?.jsonObject?.get("watchEndpoint")?.jsonObject?.get("videoId")?.jsonPrimitive?.content
-                    ?: return null
-
-                val title = renderer["flexColumns"]?.jsonArray?.get(0)?.jsonObject
-                    ?.get("musicResponsiveListItemFlexColumnRenderer")?.jsonObject
-                    ?.get("text")?.jsonObject?.get("runs")?.jsonArray?.get(0)?.jsonObject
-                    ?.get("text")?.jsonPrimitive?.content ?: "Unknown"
-
-                val artist = renderer["flexColumns"]?.jsonArray?.get(1)?.jsonObject
-                    ?.get("musicResponsiveListItemFlexColumnRenderer")?.jsonObject
-                    ?.get("text")?.jsonObject?.get("runs")?.jsonArray?.get(0)?.jsonObject
-                    ?.get("text")?.jsonPrimitive?.content ?: "Unknown"
-
-                val thumbnails = renderer["thumbnail"]?.jsonObject
-                    ?.get("musicThumbnailRenderer")?.jsonObject
-                    ?.get("thumbnail")?.jsonObject?.get("thumbnails")?.jsonArray
-
-                val thumbUrl = thumbnails?.map { it.jsonObject }
-                    ?.maxByOrNull { it["width"]?.jsonPrimitive?.intOrNull ?: 0 }
-                    ?.get("url")?.jsonPrimitive?.content ?: ""
-
-                return SongDetails(
-                    id = videoId,
-                    title = title,
-                    artist = artist,
-                    duration = 0,
-                    coverImageUrl = thumbUrl,
-                    streamUrl = ""
-                )
-            } catch (e: Exception) {
-                return null
+        // Simplistic cipher handling
+        if (url == null && bestAudioFormat?.containsKey("signatureCipher") == true) {
+            val cipher = bestAudioFormat["signatureCipher"]?.jsonPrimitive?.content ?: ""
+            val params = cipher.split("&").associate { 
+                val parts = it.split("=")
+                if (parts.size == 2) parts[0] to java.net.URLDecoder.decode(parts[1], "UTF-8")
+                else "" to ""
+            }
+            url = params["url"]?.let { baseUrl ->
+                val sig = params["s"]
+                val sp = params["sp"] ?: "sig"
+                if (sig != null) "$baseUrl&$sp=$sig" else baseUrl
             }
         }
 
-        suspend fun getSearchSuggestions(query: String): List<String> =
-                withContext(Dispatchers.IO) {
-                        try {
-                                val client = YouTubeClients.WEB_REMIX
-                                val response: String =
-                                        httpClient
-                                                .post(
-                                                        "https://music.youtube.com/youtubei/v1/music/get_search_suggestions"
-                                                ) {
-                                                        parameter("key", client.apiKey)
-                                                        contentType(ContentType.Application.Json)
-                                                        header("User-Agent", client.userAgent)
-                                                        header(
-                                                                "X-YouTube-Client-Name",
-                                                                client.clientName
-                                                        )
-                                                        header(
-                                                                "X-YouTube-Client-Version",
-                                                                client.clientVersion
-                                                        )
-                                                        header(
-                                                                "Referer",
-                                                                "https://music.youtube.com/"
-                                                        )
-                                                        setBody(
-                                                                SearchBody(
-                                                                        context =
-                                                                                client.toDynamicInnerTubeContext(),
-                                                                        query = query
-                                                                )
-                                                        )
-                                                }
-                                                .body()
+        return url
+    }
 
-                                val root = json.parseToJsonElement(response).jsonObject
-                                val contents =
-                                        root["contents"]
-                                                ?.jsonArray
-                                                ?.get(0)
-                                                ?.jsonObject
-                                                ?.get("searchSuggestionsSectionRenderer")
-                                                ?.jsonObject
-                                                ?.get("contents")
-                                                ?.jsonArray
+    private suspend fun fetchFromPiped(baseUrl: String, videoId: String): String? {
+        return try {
+            val response: String = httpClient.get("$baseUrl/streams/$videoId").body()
+            val root = json.parseToJsonElement(response).jsonObject
+            val audioStreams = root["audioStreams"]?.jsonArray
+            audioStreams?.maxByOrNull { it.jsonObject["bitrate"]?.jsonPrimitive?.intOrNull ?: 0 }
+                ?.jsonObject?.get("url")?.jsonPrimitive?.content
+        } catch (e: Exception) {
+            null
+        }
+    }
 
-                                contents?.mapNotNull { item ->
-                                        item.jsonObject["searchSuggestionRenderer"]
-                                                ?.jsonObject
-                                                ?.get("suggestion")
-                                                ?.jsonObject
-                                                ?.get("runs")
-                                                ?.jsonArray
-                                                ?.get(0)
-                                                ?.jsonObject
-                                                ?.get("text")
-                                                ?.jsonPrimitive
-                                                ?.content
-                                }
-                                        ?: emptyList()
-                        } catch (e: Exception) {
-                                emptyList()
-                        }
-                }
+    override suspend fun getRelatedSongs(songId: String): List<SongDetails> = withContext(Dispatchers.IO) {
+        try {
+            val client = YouTubeClients.WEB_REMIX
+            val response: String = httpClient.post("https://music.youtube.com/youtubei/v1/next") {
+                parameter("key", client.apiKey)
+                setBody(NextBody(
+                    context = client.toInnerTubeContext(gl = gl, hl = hl),
+                    videoId = songId.removePrefix("yt_")
+                ))
+            }.body()
+            val root = json.parseToJsonElement(response).jsonObject
+            val songs = mutableListOf<SongDetails>()
+            findSongs(root, songs)
+            songs.distinctBy { it.id }.filter { it.id != songId }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
-        suspend fun getTrendingMusic(): List<SongDetails> = withContext(Dispatchers.IO) {
-            try {
-                val client = YouTubeClients.WEB_REMIX
-                val response: String = httpClient.post("https://music.youtube.com/youtubei/v1/browse") {
-                    parameter("key", client.apiKey)
-                    contentType(ContentType.Application.Json)
-                    header("User-Agent", client.userAgent)
-                    header("X-YouTube-Client-Name", client.clientName)
-                    header("X-YouTube-Client-Version", client.clientVersion)
-                    setBody(BrowseBody(
-                        context = client.toDynamicInnerTubeContext(),
-                        browseId = "FEmusic_trending"
-                    ))
-                }.body()
+    override suspend fun getTrendingMusic(): List<SongDetails> = withContext(Dispatchers.IO) {
+        try {
+            val client = YouTubeClients.WEB_REMIX
+            val response: String = httpClient.post("https://music.youtube.com/youtubei/v1/browse") {
+                parameter("key", client.apiKey)
+                setBody(BrowseBody(
+                    context = client.toInnerTubeContext(gl = gl, hl = hl),
+                    browseId = "FEmusic_trending"
+                ))
+            }.body()
+            val root = json.parseToJsonElement(response).jsonObject
+            val songs = mutableListOf<SongDetails>()
+            findSongs(root, songs)
+            songs
+        } catch (e: Exception) {
+            searchVideos("trending music india")
+        }
+    }
 
-                val root = json.parseToJsonElement(response).jsonObject
-                val contents = root["contents"]?.jsonObject
-                    ?.get("sectionListRenderer")?.jsonObject
-                    ?.get("contents")?.jsonArray
-
-                val songs = mutableListOf<SongDetails>()
-                contents?.forEach { section ->
-                    val shelf = section.jsonObject["musicShelfRenderer"]?.jsonObject
-                    shelf?.get("contents")?.jsonArray?.forEach { item ->
-                        val renderer = item.jsonObject["musicResponsiveListItemRenderer"]?.jsonObject
-                        if (renderer != null) {
-                            val videoId = renderer["playlistItemData"]?.jsonObject?.get("videoId")?.jsonPrimitive?.content
-                            if (videoId != null) {
-                                val title = renderer["flexColumns"]?.jsonArray?.get(0)?.jsonObject
-                                    ?.get("musicResponsiveListItemFlexColumnRenderer")?.jsonObject
-                                    ?.get("text")?.jsonObject?.get("runs")?.jsonArray?.get(0)?.jsonObject
-                                    ?.get("text")?.jsonPrimitive?.content ?: "Unknown"
-
-                                val artist = renderer["flexColumns"]?.jsonArray?.get(1)?.jsonObject
-                                    ?.get("musicResponsiveListItemFlexColumnRenderer")?.jsonObject
-                                    ?.get("text")?.jsonObject?.get("runs")?.jsonArray?.get(0)?.jsonObject
-                                    ?.get("text")?.jsonPrimitive?.content ?: "Unknown"
-
-                                val thumbUrl = renderer["thumbnail"]?.jsonObject
-                                    ?.get("musicThumbnailRenderer")?.jsonObject
-                                    ?.get("thumbnail")?.jsonObject?.get("thumbnails")?.jsonArray
-                                    ?.map { it.jsonObject }
-                                    ?.maxByOrNull { it["width"]?.jsonPrimitive?.intOrNull ?: 0 }
-                                    ?.get("url")?.jsonPrimitive?.content ?: ""
-
-                                songs.add(SongDetails(id = videoId, title = title, artist = artist, duration = 0, coverImageUrl = thumbUrl, streamUrl = ""))
-                            }
-                        }
-                    }
-                }
-                songs
-            } catch (e: Exception) {
-                Log.e("InnerTubeService", "Get trending failed", e)
-                emptyList()
+    override suspend fun getSearchSuggestions(query: String): List<String> = withContext(Dispatchers.IO) {
+        try {
+            val client = YouTubeClients.WEB_REMIX
+            val response: String = httpClient.post("https://music.youtube.com/youtubei/v1/music/get_search_suggestions") {
+                parameter("key", client.apiKey)
+                setBody(SearchSuggestionsBody(
+                    context = client.toInnerTubeContext(gl = gl, hl = hl),
+                    input = query
+                ))
+            }.body()
+            val root = json.parseToJsonElement(response).jsonObject
+            val contents = root["contents"]?.jsonArray ?: emptyList()
+            val suggestions = mutableListOf<String>()
+            
+            contents.forEach { content ->
+                val suggestionRenderer = content.jsonObject["searchSuggestionRenderer"]?.jsonObject
+                val suggestion = suggestionRenderer?.get("suggestion")?.jsonObject?.get("runs")?.jsonArray?.getOrNull(0)?.jsonObject?.get("text")?.jsonPrimitive?.content
+                if (suggestion != null) suggestions.add(suggestion)
             }
-        }
+            suggestions
+        } catch (e: Exception) { emptyList() }
+    }
 
-        suspend fun getMusicCharts(): List<SongDetails> = withContext(Dispatchers.IO) {
-            try {
-                val client = YouTubeClients.WEB_REMIX
-                val response: String = httpClient.post("https://music.youtube.com/youtubei/v1/browse") {
-                    parameter("key", client.apiKey)
-                    contentType(ContentType.Application.Json)
-                    header("User-Agent", client.userAgent)
-                    header("X-YouTube-Client-Name", client.clientName)
-                    header("X-YouTube-Client-Version", client.clientVersion)
-                    setBody(BrowseBody(
-                        context = client.toDynamicInnerTubeContext(),
-                        browseId = "FEmusic_charts"
-                    ))
-                }.body()
+    suspend fun getMusicCharts(): List<SongDetails> = getTrendingMusic()
 
-                val root = json.parseToJsonElement(response).jsonObject
-                val songs = mutableListOf<SongDetails>()
-                
-                // Recursive search for songs in charts
-                fun findSongs(element: JsonElement) {
-                    when (element) {
-                        is JsonObject -> {
-                            val renderer = element["musicResponsiveListItemRenderer"]?.jsonObject
-                            if (renderer != null) {
-                                parseSongRenderer(renderer)?.let { songs.add(it) }
-                            } else {
-                                element.values.forEach { findSongs(it) }
-                            }
-                        }
-                        is JsonArray -> {
-                            element.forEach { findSongs(it) }
-                        }
-                        else -> {}
-                    }
+    suspend fun getMoodsAndGenres(): List<Pair<String, String>> = withContext(Dispatchers.IO) {
+        listOf(
+            "Chill" to "chill",
+            "Workout" to "workout",
+            "Focus" to "focus",
+            "Party" to "party",
+            "Sleep" to "sleep",
+            "Romance" to "romantic"
+        )
+    }
+
+    private fun findSongs(element: JsonElement, songs: MutableList<SongDetails>) {
+        if (element is JsonObject) {
+            if (element.containsKey("musicResponsiveListItemRenderer")) {
+                val renderer = element["musicResponsiveListItemRenderer"]?.jsonObject
+                if (renderer != null) {
+                    parseSongRenderer(renderer)?.let { songs.add(it) }
                 }
-                findSongs(root)
-                songs.distinctBy { it.id }
-            } catch (e: Exception) {
-                Log.e("InnerTubeService", "Get charts failed", e)
-                emptyList()
+            } else if (element.containsKey("playlistItemData")) {
+                parseSongRenderer(element)?.let { songs.add(it) }
+            } else {
+                element.values.forEach { findSongs(it, songs) }
             }
+        } else if (element is JsonArray) {
+            element.forEach { findSongs(it, songs) }
         }
+    }
 
-        suspend fun getMoodsAndGenres(): List<Pair<String, String>> = withContext(Dispatchers.IO) {
-            try {
-                val client = YouTubeClients.WEB_REMIX
-                val response: String = httpClient.post("https://music.youtube.com/youtubei/v1/browse") {
-                    parameter("key", client.apiKey)
-                    contentType(ContentType.Application.Json)
-                    header("User-Agent", client.userAgent)
-                    setBody(BrowseBody(
-                        context = client.toDynamicInnerTubeContext(),
-                        browseId = "FEmusic_moods_and_genres"
-                    ))
-                }.body()
-
-                val root = json.parseToJsonElement(response).jsonObject
-                val moods = mutableListOf<Pair<String, String>>()
-                
-                fun findMoods(element: JsonElement) {
-                    when (element) {
-                        is JsonObject -> {
-                            val renderer = element["musicNavigationButtonRenderer"]?.jsonObject
-                            if (renderer != null) {
-                                val title = renderer["buttonText"]?.jsonObject?.get("runs")?.jsonArray?.get(0)?.jsonObject?.get("text")?.jsonPrimitive?.content ?: ""
-                                val color = renderer["solid"]?.jsonObject?.get("leftColor")?.jsonPrimitive?.long ?: 0L
-                                if (title.isNotEmpty()) moods.add(title to color.toString())
-                            } else {
-                                element.values.forEach { findMoods(it) }
-                            }
-                        }
-                        is JsonArray -> {
-                            element.forEach { findMoods(it) }
-                        }
-                        else -> {}
-                    }
-                }
-                findMoods(root)
-                moods
-            } catch (e: Exception) {
-                emptyList()
+    private fun parseSongRenderer(renderer: JsonObject): SongDetails? {
+        try {
+            val flexColumns = renderer["flexColumns"]?.jsonArray
+            val title = if (flexColumns != null) {
+                flexColumns.getOrNull(0)?.jsonObject?.get("musicResponsiveListItemFlexColumnRenderer")?.jsonObject
+                    ?.get("text")?.jsonObject?.get("runs")?.jsonArray?.getOrNull(0)?.jsonObject?.get("text")?.jsonPrimitive?.content ?: "Unknown"
+            } else {
+                renderer["title"]?.jsonObject?.get("runs")?.jsonArray?.getOrNull(0)?.jsonObject?.get("text")?.jsonPrimitive?.content ?: "Unknown"
             }
-        }
+            
+            val artist = if (flexColumns != null && flexColumns.size > 1) {
+                flexColumns.getOrNull(1)?.jsonObject?.get("musicResponsiveListItemFlexColumnRenderer")?.jsonObject
+                    ?.get("text")?.jsonObject?.get("runs")?.jsonArray?.getOrNull(0)?.jsonObject?.get("text")?.jsonPrimitive?.content ?: "Unknown"
+            } else "Unknown"
 
-        override suspend fun getSongDetails(songId: String): SongDetails? {
-                return null
+            val videoId = renderer["playlistItemData"]?.jsonObject?.get("videoId")?.jsonPrimitive?.content
+                ?: renderer["navigationEndpoint"]?.jsonObject?.get("watchEndpoint")?.jsonObject?.get("videoId")?.jsonPrimitive?.content
+                ?: return null
+
+            val thumbnails = renderer["thumbnail"]?.jsonObject?.get("musicThumbnailRenderer")?.jsonObject?.get("thumbnail")?.jsonObject?.get("thumbnails")?.jsonArray
+            val thumbnailUrl = thumbnails?.lastOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content ?: ""
+
+            return SongDetails(
+                id = "yt_$videoId",
+                title = title,
+                artist = artist,
+                thumbnailUrl = thumbnailUrl
+            )
+        } catch (e: Exception) {
+            return null
         }
+    }
 }
+
+@Serializable
+data class NextBody(val context: InnerTubeContext, val videoId: String)
+
+@Serializable
+data class BrowseBody(val context: InnerTubeContext, val browseId: String)
+
+@Serializable
+data class SearchSuggestionsBody(val context: InnerTubeContext, val input: String)

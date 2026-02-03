@@ -65,37 +65,24 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                         // Actual Logo
                         Box(
                                 modifier =
-                                        Modifier.size(280.dp) // Increased size for better visibility
+                                        Modifier.size(320.dp) // Adjusted size
                                                 .scale(logoScale)
                                                 .alpha(logoAlpha),
-                                contentAlignment = Alignment.Center
+                                contentAlignment = Alignment.TopCenter
                         ) {
                                 Image(
-                                        painter = painterResource(id = R.drawable.fly_music_logo),
+                                        painter = painterResource(id = R.drawable.app_logo_splash),
                                         contentDescription = "FlyMusic AI Logo",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Fit // Fit to show full logo with wings
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(CircleShape), // Optional: Clip to circle if desired, or just rounded
+                                        contentScale = ContentScale.Crop, // Crop to remove bottom text
+                                        alignment = Alignment.TopCenter // Focus on top part (wings)
                                 )
                         }
 
+                        // Text components removed as per user request to hide text
                         Spacer(modifier = Modifier.height(24.dp))
-
-                        Text(
-                                text = "FlyMusic AI",
-                                color = AmberGold,
-                                fontSize = 42.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 8.sp,
-                                textAlign = TextAlign.Center
-                        )
-
-                        Text(
-                                text = "PREMIUM AUDIO EXPERIENCE",
-                                color = YellowSoft.copy(alpha = 0.6f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Light,
-                                letterSpacing = 4.sp
-                        )
                 }
 
                 // Bottom Progress

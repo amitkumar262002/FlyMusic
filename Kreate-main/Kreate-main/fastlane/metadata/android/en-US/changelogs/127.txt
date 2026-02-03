@@ -1,2 +1,0 @@
-Fix:
-- Search feature stuck in infinite loop

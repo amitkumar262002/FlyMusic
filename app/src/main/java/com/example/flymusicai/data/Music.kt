@@ -20,7 +20,8 @@ data class Music(
         val isRingtone: Boolean = false, // New field to identify ringtones
         var isDownloaded: Boolean = false, // ✅ Download status
         var downloadProgress: Int = 0, // ✅ 0-100%
-        var localFilePath: String = "" // ✅ Local path
+        var localFilePath: String = "", // ✅ Local path
+        val lyrics: String = "" // Full lyrics text
 )
 
 /** Data class representing a playlist */

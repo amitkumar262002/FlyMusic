@@ -6,6 +6,12 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+val localProperties = java.util.Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(java.io.FileInputStream(localPropertiesFile))
+}
+
 android {
     namespace = "com.example.flymusicai"
     compileSdk = 36
@@ -18,6 +24,13 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        buildConfigField("String", "INNERTUBE_API_KEY_TESTSUITE", "\"${localProperties["INNERTUBE_API_KEY_TESTSUITE"] ?: ""}\"")
+        buildConfigField("String", "INNERTUBE_API_KEY_IOS", "\"${localProperties["INNERTUBE_API_KEY_IOS"] ?: ""}\"")
+        buildConfigField("String", "INNERTUBE_API_KEY_WEB_REMIX", "\"${localProperties["INNERTUBE_API_KEY_WEB_REMIX"] ?: ""}\"")
+        buildConfigField("String", "INNERTUBE_API_KEY_ANDROID", "\"${localProperties["INNERTUBE_API_KEY_ANDROID"] ?: ""}\"")
+        buildConfigField("String", "OPENAI_API_KEY", "\"${localProperties["OPENAI_API_KEY"] ?: ""}\"")
+        buildConfigField("String", "GEMINI_API_KEY", "\"${localProperties["GEMINI_API_KEY"] ?: ""}\"")
     }
 
     buildTypes {
@@ -38,6 +51,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
